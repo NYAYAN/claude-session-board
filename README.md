@@ -5,6 +5,14 @@ düzenleyen küçük bir Windows uygulaması. Claude'un kenar çubuğu aynı and
 gruplayabildiği için (klasör *ya da* özel gruplar) bu ihtiyaç ayrı bir pencerede karşılanır. Oturumlar
 istenirse uygulamanın içindeki terminalde (`claude --resume`) sürdürülebilir.
 
+![Solda workspace → grup → oturum ağacı, sağda terminal sekmesinde Claude Code](docs/screenshots/overview.png)
+
+| Sağ tık menüsü | Yalnız favoriler (açık tema) |
+| --- | --- |
+| ![Oturumun sağ tık menüsü: terminalde / Claude'da aç, gruba taşı](docs/screenshots/context-menu.png) | ![Yalnız favori klasörler, açık tema; üzerine gelinen oturumda aç düğmeleri](docs/screenshots/favorites-light.png) |
+
+<sub>Ekran görüntülerindeki projeler ve oturumlar örnek veridir.</sub>
+
 ## Gereksinimler
 
 - Windows 10/11 (WebView2 çalışma zamanı ile)
