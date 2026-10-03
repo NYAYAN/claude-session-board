@@ -8,9 +8,7 @@
   "scripts": {
     "tauri": "tauri",
     "vendor": "node scripts/vendor.mjs",
-    "predev": "node scripts/vendor.mjs",
     "dev": "tauri dev",
-    "prebuild": "node scripts/vendor.mjs",
     "build": "tauri build",
     "test:rust": "cd src-tauri && cargo test"
   },

@@ -1,0 +1,69 @@
+# `v*` etiketi push edilince Windows kurulum paketini (NSIS) derler ve GitHub sürümü olarak
+# YAYINLAR (taslak değil). Sürüm çıkarmak: tauri.conf.json + Cargo.toml + package.json'daki
+# sürümü artır, commit'le, `git tag vX.Y.Z && git push origin vX.Y.Z`.
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  # Elle tetiklerken dal yerine ETİKET seçilmeli; dalda koşarsa iş atlanır (aşağıdaki `if`).
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Etiket ile uygulama sürümü ayrışırsa kurulum dosyasının adı ve "Hakkında" sürümü
+      # etiketten farklı olurdu; derlemeden önce durdur.
+      - name: Etiket sürümle uyumlu mu
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $conf = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $cargo = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          if ("v$conf" -ne $tag -or $pkg -ne $conf -or $cargo -ne $conf) {
+            throw "Etiket $tag, tauri.conf.json $conf, package.json $pkg, Cargo.toml $cargo — hepsi aynı olmalı."
+          }
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+          key: release
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: cargo test
+        working-directory: ./src-tauri
+        run: cargo test
+
+      # `npm run tauri build` çalıştırır; xterm dosyaları tauri.conf.json → beforeBuildCommand ile
+      # kopyalanır. Güncelleyici/imza yapılandırılmadığı için imza anahtarı gerekmez.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'SessionBoard ${{ github.ref_name }}'
+          releaseBody: |
+            Windows için kurulum dosyası aşağıda: `SessionBoard_*_x64-setup.exe`.
+
+            - Yönetici izni istemez; yalnız kullanıcı için kurulur.
+            - Kod imzası yok: Windows SmartScreen uyarı verebilir → **Ek bilgi** → **Yine de çalıştır**.
+            - Gömülü terminal için bağımsız Claude Code CLI gerekir — bkz. README → [Terminal](https://github.com/${{ github.repository }}#terminal).
+          releaseDraft: false
+          prerelease: false

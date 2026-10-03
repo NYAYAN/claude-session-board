@@ -1,6 +1,8 @@
 // xterm.js tarayıcı paketlerini src/vendor'a kopyalar. Ön yüz paketleyicisiz (vanilla) olduğu ve
 // CSP yalnız 'self' betiklerine izin verdiği için kütüphaneler uygulamayla birlikte gömülür.
-// `npm run build` / `npm run dev` öncesi otomatik çalışır (prebuild / predev).
+// Her `tauri build` / `tauri dev` öncesi otomatik çalışır (tauri.conf.json → beforeBuildCommand /
+// beforeDevCommand). npm'in prebuild kancası DEĞİL: CI'daki tauri-action `npm run tauri build`
+// çağırır ve o yolda prebuild çalışmaz → xterm dosyaları eksik kalırdı.
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
