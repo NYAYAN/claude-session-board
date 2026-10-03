@@ -1,5 +1,5 @@
 node_modules/
 src-tauri/target/
 src-tauri/gen/schemas/
-# npm run vendor üretir (prebuild/predev)
+# npm run vendor üretir (tauri build/dev öncesi otomatik)
 src/vendor/

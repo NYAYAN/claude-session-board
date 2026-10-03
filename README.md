@@ -1,5 +1,8 @@
 # SessionBoard
 
+[![Check](https://github.com/NYAYAN/claude-session-board/actions/workflows/check.yml/badge.svg)](https://github.com/NYAYAN/claude-session-board/actions/workflows/check.yml)
+[![Release](https://img.shields.io/github/v/release/NYAYAN/claude-session-board)](https://github.com/NYAYAN/claude-session-board/releases/latest)
+
 Claude masaüstü uygulamasındaki Claude Code oturumlarını **workspace → grup → oturum** ağacında
 düzenleyen küçük bir Windows uygulaması. Claude'un kenar çubuğu aynı anda yalnız tek ölçüte göre
 gruplayabildiği için (klasör *ya da* özel gruplar) bu ihtiyaç ayrı bir pencerede karşılanır. Oturumlar
@@ -12,6 +15,12 @@ istenirse uygulamanın içindeki terminalde (`claude --resume`) sürdürülebili
 | ![Oturumun sağ tık menüsü: terminalde / Claude'da aç, gruba taşı](docs/screenshots/context-menu.png) | ![Yalnız favori klasörler, açık tema; üzerine gelinen oturumda aç düğmeleri](docs/screenshots/favorites-light.png) |
 
 <sub>Ekran görüntülerindeki projeler ve oturumlar örnek veridir.</sub>
+
+## Kurulum
+
+[Son sürümden](https://github.com/NYAYAN/claude-session-board/releases/latest) `SessionBoard_<sürüm>_x64-setup.exe`
+dosyasını indirip çalıştır. Yönetici izni istemez, yalnız kullanıcı için kurulur. Kurulum dosyası kod imzalı
+olmadığı için Windows SmartScreen uyarı verebilir: **Ek bilgi** → **Yine de çalıştır**.
 
 ## Gereksinimler
 
@@ -86,8 +95,8 @@ npm install
 npm run build   # → src-tauri\target\release\bundle\nsis\SessionBoard_<sürüm>_x64-setup.exe
 ```
 
-`npm run build` / `npm run dev` önce xterm.js dosyalarını `node_modules`'tan `src/vendor`'a kopyalar
-(`npm run vendor`); bu klasör depoda tutulmaz.
+Her `tauri build` / `tauri dev` önce xterm.js dosyalarını `node_modules`'tan `src/vendor`'a kopyalar
+(`tauri.conf.json` → `beforeBuildCommand`: `npm run vendor`); bu klasör depoda tutulmaz.
 
 **Sorun giderme — `LNK1104: cannot open file 'msvcrt.lib'`:** Rust bilgisayardaki en yeni Visual Studio
 kurulumunu seçer; o kurulumda C++ masaüstü (x64) kütüphaneleri eksikse bağlayıcı bu hatayı verir. Ya o
@@ -104,3 +113,21 @@ cmd /c '"<Visual Studio klasörü>\VC\Auxiliary\Build\vcvars64.bat" && npm run b
 cd src-tauri; cargo test                         # birim testleri (ConPTY testi dahil)
 cd src-tauri; cargo test -- --include-ignored    # + bilgisayardaki Claude kayıtlarıyla duman testi
 ```
+
+Her push'ta GitHub Actions (`.github/workflows/check.yml`) `cargo check`, `cargo test` ve JS sözdizimi
+denetimini Windows'ta çalıştırır.
+
+## Sürüm çıkarma
+
+1. Sürümü üç yerde artır: `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `package.json`
+   (`Cargo.lock` derlemede kendiliğinden güncellenir); commit'le ve push'la.
+2. Etiketi at ve gönder:
+
+   ```powershell
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+`.github/workflows/release.yml` etiketi görünce testleri koşar, kurulum paketini derler ve
+`SessionBoard v0.2.0` adıyla sürümü yayınlar. Etiket ile üç dosyadaki sürüm aynı değilse derlemeye
+başlamadan durur.

@@ -1,0 +1,52 @@
+# Her push'ta derleme ve testler. `release.yml` yalnız etiket atılınca koştuğu için kırıklar
+# ancak sürüm anında görülürdü; burada her push'ta yakalanır.
+#
+# Yalnız Windows: uygulama Windows'a özel (Claude masaüstü kayıtları, ConPTY, claude:// işleyicisi).
+name: Check
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: cargo check + test, JS sözdizimi
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+          key: check
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - run: npm ci
+
+      # Ön yüz paketleyicisiz: JS'i yalnız sözdizimi açısından doğrula.
+      - name: JS sözdizimi
+        run: |
+          node --check src/app.js
+          node --check src/terminal.js
+          node --check scripts/vendor.mjs
+
+      # tauri derlemesi ön yüz klasörünü gömdüğü için xterm dosyaları önce kopyalanır.
+      - run: npm run vendor
+
+      # `--all-targets` testleri de derler. ConPTY uçtan uca testi (pty.rs) burada da koşar;
+      # bilgisayardaki Claude kayıtlarını okuyan duman testi `#[ignore]` olduğu için atlanır.
+      - name: cargo check
+        working-directory: ./src-tauri
+        run: cargo check --all-targets
+
+      - name: cargo test
+        working-directory: ./src-tauri
+        run: cargo test
