@@ -49,7 +49,10 @@
   let allOrder = [];
   let hiddenCount = 0;
   let dragWsKey = null;
-  let wsDropEl = null;
+  // Sürüklenen grup: { ws, id }. Gruplar yalnız kendi klasörü içinde sıralanır.
+  let dragGroup = null;
+  // Klasör/grup sıralamasında önüne/arkasına çizgi gösterilen hedef kutu.
+  let orderDropEl = null;
 
   // Satır içi düzenleme / menü / onay / sürükleme sürerken ağaç yeniden çizilmez;
   // fare basılıyken de çizilmez (mousedown ile click arasında DOM değişirse tık kaybolur).
@@ -313,6 +316,7 @@
     row.dataset.group = g.id;
     row.setAttribute('role', 'treeitem');
     row.setAttribute('aria-expanded', String(open));
+    row.draggable = !searching && !g.pseudo;
     row.append(chevron(open), span('name', g.name), span('count', String(g.sessions.length)));
     box.append(row);
 
@@ -368,7 +372,7 @@
     const box = el('div', 'tip');
     box.innerHTML =
       'Klasör satırındaki <b>+</b> ile grup ekle, oturumları gruba <b>sürükle</b>. ' +
-      'Klasörleri sürükleyerek sırala, <b>☆</b> ile favorilere ekle. ' +
+      'Klasörleri ve grupları sürükleyerek sırala, <b>☆</b> ile favorilere ekle. ' +
       '<b>Ctrl</b>/<b>Shift</b> ile çoklu seçim, <b>sağ tık</b> ile tüm işlemler. ' +
       'Oturumun üzerine gelince çıkan düğmelerle <b>terminalde</b> ya da <b>Claude\'da</b> aç.';
     const close = el('button', 'row-btn');
@@ -679,6 +683,20 @@
     const j = i + dir;
     if (i < 0 || j < 0 || j >= groups.length) return;
     [groups[i], groups[j]] = [groups[j], groups[i]];
+    commit();
+  }
+
+  /** Grubu aynı klasördeki hedef grubun önüne/arkasına koyar; hedef boşsa (Grupsuz) sona. */
+  function placeGroup(wsKey, gid, targetGid, after) {
+    if (gid === targetGid) return;
+    const w = wsState(wsKey);
+    const g = w.groups.find((x) => x.id === gid);
+    if (!g) return;
+    const rest = w.groups.filter((x) => x !== g);
+    const t = targetGid ? rest.findIndex((x) => x.id === targetGid) : rest.length;
+    if (t < 0) return;
+    rest.splice(after ? t + 1 : t, 0, g);
+    w.groups = rest;
     commit();
   }
 
@@ -1088,6 +1106,17 @@
       treeEl.classList.add('dragging');
       return;
     }
+    const groupRow = e.target.closest('.group-row');
+    if (groupRow) {
+      if (groupRow.dataset.kind !== 'group') return;
+      dragGroup = { ws: groupRow.dataset.ws, id: groupRow.dataset.group };
+      interacting++;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', groupRow.querySelector('.name')?.textContent || '');
+      groupRow.parentElement.classList.add('dragging-group');
+      treeEl.classList.add('dragging');
+      return;
+    }
     const row = e.target.closest('.row.session');
     if (!row) return;
     const id = row.dataset.id;
@@ -1144,9 +1173,21 @@
     return { box, key, after };
   }
 
-  function setWsDrop(target) {
-    if (wsDropEl && (!target || wsDropEl !== target.box)) wsDropEl.classList.remove('drop-before', 'drop-after');
-    wsDropEl = target ? target.box : null;
+  /** Grup sürüklenirken: aynı klasördeki grubun önüne/arkasına; Grupsuz'un üzerine bırakmak sona koyar. */
+  function groupDropOf(e) {
+    const box = e.target.closest('.group');
+    if (!box || !dragGroup || box.dataset.dropWs !== dragGroup.ws) return null;
+    const gid = box.dataset.dropGroup;
+    if (gid === dragGroup.id) return null;
+    if (!gid) return { box, gid, after: false };
+    const rowRect = box.querySelector('.group-row').getBoundingClientRect();
+    const after = e.clientY > rowRect.top + rowRect.height / 2;
+    return { box, gid, after };
+  }
+
+  function setOrderDrop(target) {
+    if (orderDropEl && (!target || orderDropEl !== target.box)) orderDropEl.classList.remove('drop-before', 'drop-after');
+    orderDropEl = target ? target.box : null;
     if (target) {
       target.box.classList.toggle('drop-before', !target.after);
       target.box.classList.toggle('drop-after', target.after);
@@ -1156,16 +1197,25 @@
   function endWsDrag() {
     if (!dragWsKey) return;
     dragWsKey = null;
-    setWsDrop(null);
+    setOrderDrop(null);
     for (const b of treeEl.querySelectorAll('.dragging-ws')) b.classList.remove('dragging-ws');
     treeEl.classList.remove('dragging');
     release();
   }
 
+  function endGroupDrag() {
+    if (!dragGroup) return;
+    dragGroup = null;
+    setOrderDrop(null);
+    for (const b of treeEl.querySelectorAll('.dragging-group')) b.classList.remove('dragging-group');
+    treeEl.classList.remove('dragging');
+    release();
+  }
+
   treeEl.addEventListener('dragover', (e) => {
-    if (dragWsKey) {
-      const target = wsDropOf(e);
-      setWsDrop(target);
+    if (dragWsKey || dragGroup) {
+      const target = dragWsKey ? wsDropOf(e) : groupDropOf(e);
+      setOrderDrop(target);
       if (target) {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
@@ -1183,7 +1233,7 @@
   treeEl.addEventListener('dragleave', (e) => {
     if (!treeEl.contains(e.relatedTarget)) {
       setDropEl(null);
-      setWsDrop(null);
+      setOrderDrop(null);
     }
   });
 
@@ -1195,6 +1245,16 @@
       if (target) {
         e.preventDefault();
         placeWorkspace(moving, target.key, target.after);
+      }
+      return;
+    }
+    if (dragGroup) {
+      const target = groupDropOf(e);
+      const moving = dragGroup;
+      endGroupDrag();
+      if (target) {
+        e.preventDefault();
+        placeGroup(moving.ws, moving.id, target.gid, target.after);
       }
       return;
     }
@@ -1211,6 +1271,7 @@
   treeEl.addEventListener('dragend', () => {
     endDrag();
     endWsDrag();
+    endGroupDrag();
   });
   treeEl.addEventListener('scroll', closeMenu);
 

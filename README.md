@@ -46,6 +46,8 @@ olmadığı için Windows SmartScreen uyarı verebilir: **Ek bilgi** → **Yine 
 - **Klasör işlemleri (sağ tık):** yeniden adlandır, yukarı/aşağı taşı, gizle,
   *başka klasörün altına kat* (ör. bir projeyi yeni bir klasöre taşıdıysan, eski klasörde kalan oturumları
   yenisinin altında topla; *Ayır* ile geri alınır).
+- **Grup sırası:** grup satırını sürükleyip aynı klasördeki başka bir grubun önüne/arkasına bırak
+  (*Grupsuz*'un üzerine bırakmak sona koyar).
 - **Grup işlemleri (sağ tık):** yeniden adlandır, yukarı/aşağı taşı, sil (oturumlar Grupsuz'a döner).
 - **Arama:** `Ctrl+F`; Türkçe karakterlere duyarsız (`cetele` → *Çetele*).
 - **⋯ menüsü:** arşivlenmiş oturumlar, gizli klasörler, her zaman üstte, tümünü daralt/genişlet.
