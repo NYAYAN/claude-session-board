@@ -6,8 +6,9 @@
 (() => {
   'use strict';
 
-  const invoke = window.__TAURI__.core.invoke;
+  const { invoke, Channel } = window.__TAURI__.core;
   const REFRESH_MS = 20000;
+  const UPDATE_CHECK_MS = 6 * 60 * 60 * 1000;
   const SAVE_DELAY_MS = 250;
   const OPENING_TIMEOUT_MS = 10000;
   const LINK_PREFIX = 'claude://claude.ai/epitaxy/';
@@ -37,6 +38,13 @@
   // "Claude'da aç" sürerken (Claude öne gelene kadar) dönen gösterge gösterilen oturum.
   let openingId = null;
   let openingTimer = null;
+
+  // Güncelleme (src-tauri/src/updater.rs): bulunan yeni sürüm, kullanıcının kapattığı bildirim.
+  let appVersion = '';
+  let updateVersion = null;
+  let updateDismissed = null;
+  let checkingUpdate = false;
+  let updating = false;
 
   const selected = new Set();
   let anchorId = null;
@@ -231,6 +239,7 @@
     const searching = query.trim() !== '';
     const frag = document.createDocumentFragment();
 
+    if (updateVersion && updateVersion !== updateDismissed) frag.append(renderUpdate());
     if (!searching && !state.prefs.tipDismissed && currentModel.length > 0 && !hasAnyGroup()) {
       frag.append(renderTip());
     }
@@ -383,6 +392,25 @@
       commit();
     });
     box.append(close);
+    return box;
+  }
+
+  function renderUpdate() {
+    const box = el('div', 'tip update');
+    box.append(span('', `Yeni sürüm hazır: v${updateVersion}`, 'b'));
+    const btn = el('button', 'btn btn-primary');
+    btn.textContent = updating ? 'Güncelleniyor…' : 'Güncelle';
+    btn.disabled = updating;
+    btn.addEventListener('click', () => installUpdate());
+    const close = el('button', 'row-btn');
+    close.innerHTML = ICONS.close;
+    close.title = 'Şimdilik gizle';
+    close.disabled = updating;
+    close.addEventListener('click', () => {
+      updateDismissed = updateVersion;
+      render();
+    });
+    box.append(btn, close);
     return box;
   }
 
@@ -615,6 +643,61 @@
       await invoke('set_always_on_top', { on: !!state.prefs.alwaysOnTop });
     } catch (err) {
       setError('Pencere ayarı uygulanamadı: ' + err);
+    }
+  }
+
+  /** GitHub'daki son sürümü denetler. Otomatik denetim hataları yutar (çevrimdışıyken uyarı çıkmasın). */
+  async function checkUpdate(manual) {
+    if (checkingUpdate || updating) return;
+    checkingUpdate = true;
+    try {
+      const res = await invoke('check_update');
+      appVersion = res.current;
+      updateVersion = res.version || null;
+      if (manual) {
+        updateDismissed = null;
+        flash(updateVersion ? `Yeni sürüm: v${updateVersion}` : `Güncel sürüm kullanılıyor (v${appVersion})`);
+      }
+      softRender();
+    } catch (err) {
+      if (manual) setError('Güncelleme denetlenemedi: ' + err);
+    } finally {
+      checkingUpdate = false;
+    }
+  }
+
+  /** İndirip kurar; kurulum başlayınca uygulama kapanır, kurucu yeni sürümü yeniden açar. */
+  async function installUpdate() {
+    if (!updateVersion || updating) return;
+    const running = terminals.runningCount();
+    const ok = await confirmDialog(
+      `SessionBoard v${updateVersion} kurulsun mu?`,
+      'Güncelleme indirilip kurulur, ardından uygulama yeniden açılır.' +
+        (running > 0 ? ` Terminalde çalışan ${running} Claude oturumu kapanır; konuşma kayıtları kalır.` : ''),
+      'Güncelle',
+    );
+    if (!ok) return;
+    updating = true;
+    render();
+    const progress = new Channel();
+    progress.onmessage = (ev) => {
+      if (ev.kind === 'install') {
+        flash('Güncelleme kuruluyor…', 60000);
+      } else if (ev.total) {
+        flash(`Güncelleme indiriliyor… %${Math.floor((ev.received / ev.total) * 100)}`, 60000);
+      } else {
+        flash(`Güncelleme indiriliyor… ${(ev.received / 1048576).toFixed(1)} MB`, 60000);
+      }
+    };
+    try {
+      await invoke('install_update', { onProgress: progress });
+    } catch (err) {
+      flashText = '';
+      clearTimeout(flashTimer);
+      setError('Güncellenemedi: ' + err);
+    } finally {
+      updating = false;
+      render();
     }
   }
 
@@ -946,6 +1029,9 @@
       { label: 'Tümünü daralt', action: () => setAllCollapsed(true) },
       { label: 'Tümünü genişlet', action: () => setAllCollapsed(false) },
       ...(state.prefs.tipDismissed ? [{ label: 'İpucunu yeniden göster', action: () => { state.prefs.tipDismissed = false; commit(); } }] : []),
+      { sep: true },
+      { header: appVersion ? `SessionBoard v${appVersion}` : 'SessionBoard' },
+      { label: 'Güncellemeleri denetle', disabled: checkingUpdate || updating, action: () => checkUpdate(true) },
     ];
   }
 
@@ -1338,6 +1424,7 @@
   setInterval(() => {
     if (document.visibilityState === 'visible') refresh();
   }, REFRESH_MS);
+  setInterval(() => checkUpdate(false), UPDATE_CHECK_MS);
 
   // ---------------------------------------------------------------- başlat
 
@@ -1358,8 +1445,14 @@
       },
     });
     applyAlwaysOnTop();
+    try {
+      appVersion = await window.__TAURI__.app.getVersion();
+    } catch {
+      // sürüm yalnız menüde gösterilir; denetim başarılı olunca yine öğrenilir
+    }
     render();
     await refresh();
+    checkUpdate(false);
   }
 
   init();

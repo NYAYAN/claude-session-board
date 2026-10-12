@@ -22,6 +22,13 @@ istenirse uygulamanın içindeki terminalde (`claude --resume`) sürdürülebili
 dosyasını indirip çalıştır. Yönetici izni istemez, yalnız kullanıcı için kurulur. Kurulum dosyası kod imzalı
 olmadığı için Windows SmartScreen uyarı verebilir: **Ek bilgi** → **Yine de çalıştır**.
 
+### Güncelleme
+
+v0.2.0 ve sonrası açılışta ve 6 saatte bir GitHub'daki son sürümü denetler. Yeni sürüm varsa listenin
+üstünde **Güncelle** çıkar: paket indirilir, imzası doğrulanır, kurulur ve uygulama yeniden açılır
+(terminalde çalışan Claude oturumları kapanır, konuşma kayıtları kalır). Elle denetlemek için
+⋯ → *Güncellemeleri denetle*. v0.1.0'da güncelleyici yok; ondan bir kez elle v0.2.0'a geçmek gerekir.
+
 ## Gereksinimler
 
 - Windows 10/11 (WebView2 çalışma zamanı ile)
@@ -64,6 +71,7 @@ olmadığı için Windows SmartScreen uyarı verebilir: **Ek bilgi** → **Yine 
 | Terminal | Sözde terminal (ConPTY, `portable-pty`) + xterm.js. Komut: `claude --resume <cliSessionId> [--fork-session] [--permission-mode <mod>]`, çalışma klasörü oturumun `cwd`'si. İzin modu masaüstündeki kayıttan gelir (`bypassPermissions` bilerek geçirilmez) |
 | Son etkinlik | Masaüstü kaydı ile konuşma dosyasının (`~\.claude\projects\…\<cliSessionId>.jsonl`) değiştirilme zamanının büyüğü — terminalde çalışınca da güncellenir |
 | Kendi durumu | `%USERPROFILE%\.sessionboard\state.json` (her kayıtta önceki sürüm `state.json.bak`). AppData'da değil: SessionBoard Claude'un terminalinden açılırsa MSIX paketi içinde çalışır ve AppData yazımları pakete yönlenir; profil kökü sanallaştırılmaz |
+| Güncelleme | `tauri-plugin-updater`: son GitHub sürümünün `latest.json`'ı → imzalı NSIS paketi, `tauri.conf.json`'daki açık anahtarla doğrulanıp pasif kipte (yalnız ilerleme çubuğu) kurulur |
 
 > ⚠️ Claude'un oturum kayıtları **belgelenmemiş iç biçimdir**. Bir Claude güncellemesi biçimi
 > değiştirirse liste boş/eksik gelebilir (alt çubukta "N kayıt okunamadı" görünür). Uygulama Claude'un
@@ -100,6 +108,14 @@ npm run build   # → src-tauri\target\release\bundle\nsis\SessionBoard_<sürüm
 Her `tauri build` / `tauri dev` önce xterm.js dosyalarını `node_modules`'tan `src/vendor`'a kopyalar
 (`tauri.conf.json` → `beforeBuildCommand`: `npm run vendor`); bu klasör depoda tutulmaz.
 
+`npm run build` güncelleme paketini de imzaladığı için imza anahtarını ister (bkz. [Sürüm çıkarma](#sürüm-çıkarma));
+yoksa paketleme sonunda "A public key has been found, but no private key" hatası verir. `npm run dev` istemez.
+
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY = (Get-Content "$env:USERPROFILE\.tauri\sessionboard.key" -Raw).Trim()
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = (Get-Content "$env:USERPROFILE\.tauri\sessionboard.key.password" -Raw).Trim()
+```
+
 **Sorun giderme — `LNK1104: cannot open file 'msvcrt.lib'`:** Rust bilgisayardaki en yeni Visual Studio
 kurulumunu seçer; o kurulumda C++ masaüstü (x64) kütüphaneleri eksikse bağlayıcı bu hatayı verir. Ya o
 kurulumu Visual Studio Installer'dan tamamla ya da derlemeyi tam bir kurulumun x64 geliştirici ortamında
@@ -121,6 +137,19 @@ denetimini Windows'ta çalıştırır.
 
 ## Sürüm çıkarma
 
+**Bir kerelik hazırlık — imza anahtarı.** Kurulu uygulamalar yalnız bu anahtarla imzalanmış
+güncellemeleri kabul eder (açık anahtar `tauri.conf.json` → `plugins.updater.pubkey`). Gizli anahtar
+depoda DEĞİL: `%USERPROFILE%\.tauri\sessionboard.key` (+ `.key.password`). **Yedekle**: kaybolursa
+kurulu uygulamalar sonraki sürümleri kabul etmez, herkes bir kez elle yeniden kurmak zorunda kalır.
+GitHub'a depo sırrı olarak bir kez ekle:
+
+```powershell
+gh secret set TAURI_SIGNING_PRIVATE_KEY --repo NYAYAN/claude-session-board --body (Get-Content "$env:USERPROFILE\.tauri\sessionboard.key" -Raw).Trim()
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo NYAYAN/claude-session-board --body (Get-Content "$env:USERPROFILE\.tauri\sessionboard.key.password" -Raw).Trim()
+```
+
+**Her sürümde:**
+
 1. Sürümü üç yerde artır: `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `package.json`
    (`Cargo.lock` derlemede kendiliğinden güncellenir); commit'le ve push'la.
 2. Etiketi at ve gönder:
@@ -130,6 +159,6 @@ denetimini Windows'ta çalıştırır.
    git push origin v0.2.0
    ```
 
-`.github/workflows/release.yml` etiketi görünce testleri koşar, kurulum paketini derler ve
-`SessionBoard v0.2.0` adıyla sürümü yayınlar. Etiket ile üç dosyadaki sürüm aynı değilse derlemeye
-başlamadan durur.
+`.github/workflows/release.yml` etiketi görünce testleri koşar, kurulum paketini derleyip imzalar ve
+`SessionBoard v0.2.0` adıyla sürümü yayınlar; sürüme güncelleyicinin okuduğu `latest.json` da eklenir.
+Etiket ile üç dosyadaki sürüm aynı değilse ya da imza sırları tanımlı değilse derlemeye başlamadan durur.

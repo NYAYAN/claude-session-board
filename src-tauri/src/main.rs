@@ -4,10 +4,11 @@
 mod pty;
 mod sessions;
 mod store;
+mod updater;
 
 use serde_json::Value;
 use tauri::ipc::Channel;
-use tauri::{AppHandle, LogicalSize, Manager, RunEvent, WebviewWindow};
+use tauri::{AppHandle, LogicalSize, Manager, RunEvent, State, WebviewWindow};
 
 /// Claude'un oturum kayıtlarını okur (salt-okuma). Yüzlerce dosya okunduğu için
 /// ana iş parçacığını bloklamamak adına ayrı iş parçacığında çalışır.
@@ -104,6 +105,22 @@ fn pty_close(app: AppHandle, id: u32) {
     pty::close(&app, id)
 }
 
+/// GitHub'daki son sürümü denetler; yeni sürüm varsa kuruluma hazır bekletir.
+#[tauri::command]
+async fn check_update(app: AppHandle, pending: State<'_, updater::Pending>) -> Result<updater::UpdateInfo, String> {
+    updater::check(&app, &pending).await
+}
+
+/// Bekleyen sürümü indirip kurar; kurulum başlayınca uygulama kapanır ve yeni sürüm açılır.
+#[tauri::command]
+async fn install_update(
+    app: AppHandle,
+    pending: State<'_, updater::Pending>,
+    on_progress: Channel<updater::Progress>,
+) -> Result<(), String> {
+    updater::install(&app, &pending, on_progress).await
+}
+
 fn main() {
     let app = tauri::Builder::default()
         // İkinci kez başlatılırsa yeni pencere açılmaz, mevcut pencere öne gelir.
@@ -116,7 +133,9 @@ fn main() {
         }))
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(pty::Ptys::default())
+        .manage(updater::Pending::default())
         .invoke_handler(tauri::generate_handler![
             list_sessions,
             open_session,
@@ -127,7 +146,9 @@ fn main() {
             pty_open,
             pty_write,
             pty_resize,
-            pty_close
+            pty_close,
+            check_update,
+            install_update
         ])
         .build(tauri::generate_context!())
         .expect("SessionBoard başlatılamadı");

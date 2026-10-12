@@ -293,6 +293,12 @@ header {
 
 .tip .row-btn { display: grid; position: absolute; top: 6px; right: 6px; }
 
+/* güncelleme bildirimi: ipucu kutusunun vurgulu, tek satırlık türü */
+.tip.update { display: flex; align-items: center; gap: 8px; padding: 7px 7px 7px 12px; border-color: var(--accent); }
+.tip.update b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tip.update .btn { flex: none; height: 24px; padding: 0 10px; }
+.tip.update .row-btn { position: static; }
+
 /* ---- alt çubuk ---- */
 footer {
   display: flex;
@@ -411,6 +417,7 @@ footer .ok { color: var(--accent); }
 .btn-danger { border-color: var(--danger); background: var(--danger); color: #fff; }
 .btn-primary:hover { background: var(--accent); filter: brightness(1.07); }
 .btn-danger:hover { background: var(--danger); filter: brightness(1.07); }
+.btn:disabled { opacity: 0.6; filter: none; cursor: default; }
 
 .drag-ghost {
   position: fixed;

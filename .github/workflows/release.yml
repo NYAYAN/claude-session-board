@@ -1,6 +1,10 @@
 # `v*` etiketi push edilince Windows kurulum paketini (NSIS) derler ve GitHub sürümü olarak
 # YAYINLAR (taslak değil). Sürüm çıkarmak: tauri.conf.json + Cargo.toml + package.json'daki
 # sürümü artır, commit'le, `git tag vX.Y.Z && git push origin vX.Y.Z`.
+#
+# Kurulu uygulamalar kendini bu sürümün `latest.json`'ından günceller (bkz. src-tauri/src/updater.rs).
+# Güncelleme paketi imzalı olmalı: depo sırları TAURI_SIGNING_PRIVATE_KEY ve
+# TAURI_SIGNING_PRIVATE_KEY_PASSWORD gerekir (README → Sürüm çıkarma).
 name: Build and Release
 
 on:
@@ -33,6 +37,17 @@ jobs:
             throw "Etiket $tag, tauri.conf.json $conf, package.json $pkg, Cargo.toml $cargo — hepsi aynı olmalı."
           }
 
+      # Anahtar yoksa tauri build ancak derlemenin sonunda hata verir; baştan durdur.
+      - name: İmza anahtarı tanımlı mı
+        shell: pwsh
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if (-not $env:KEY -or -not $env:PASSWORD) {
+            throw "TAURI_SIGNING_PRIVATE_KEY / TAURI_SIGNING_PRIVATE_KEY_PASSWORD depo sırları tanımlı değil (README → Sürüm çıkarma)."
+          }
+
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
@@ -52,15 +67,20 @@ jobs:
         run: cargo test
 
       # `npm run tauri build` çalıştırır; xterm dosyaları tauri.conf.json → beforeBuildCommand ile
-      # kopyalanır. Güncelleyici/imza yapılandırılmadığı için imza anahtarı gerekmez.
+      # kopyalanır. `createUpdaterArtifacts` açık olduğu için kurulum paketi imzalanır (.sig) ve
+      # eylem sürüme `latest.json` ekler; uygulama güncellemeyi oradan bulur.
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'SessionBoard ${{ github.ref_name }}'
+          includeUpdaterJson: true
           releaseBody: |
             Windows için kurulum dosyası aşağıda: `SessionBoard_*_x64-setup.exe`.
+            Kurulu SessionBoard (v0.2.0 ve sonrası) bu sürümü kendisi bulur ve günceller.
 
             - Yönetici izni istemez; yalnız kullanıcı için kurulur.
             - Kod imzası yok: Windows SmartScreen uyarı verebilir → **Ek bilgi** → **Yine de çalıştır**.
