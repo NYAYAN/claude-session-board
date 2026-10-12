@@ -48,7 +48,12 @@ v0.2.0 ve sonrası açılışta ve 6 saatte bir GitHub'daki son sürümü denetl
 - **Gizle/göster:** klasör satırındaki göz düğmesi; gizlileri görmek için ⋯ → *Gizli klasörleri göster*.
 - **Klasör sırası:** klasör satırını sürükleyip başka bir klasörün önüne/arkasına bırak (sağ tıkta yukarı/aşağı da var).
 - **Grup ekle:** klasör satırındaki **+** düğmesi veya sağ tık → *Grup ekle*.
-- **Taşı:** oturumu gruba sürükle-bırak, ya da sağ tık → *Gruba taşı*. *Grupsuz*'a bırakmak gruptan çıkarır.
+- **Taşı:** oturumu gruba sürükle-bırak, ya da sağ tık → *Gruba taşı* (ilk 5 grup görünür, kalanlar
+  *Daha fazla* ile). *Grupsuz*'a bırakmak gruptan çıkarır.
+- **Oturum sırası:** oturumu başka bir oturumun üst/alt yarısına bırak, önüne/arkasına geçer (aynı grupta
+  sıralar, başka gruptaysa oraya taşır); grup başlığına bırakmak en üste koyar. Elle sıraya girmemiş
+  oturumlar (ör. yeni açılanlar) en üstte, son etkinliğe göre durur. Sağ tık → *Oturumları son etkinliğe
+  göre sırala* elle sırayı sıfırlar (grupta o grubu, klasörde tümünü).
 - **Çoklu seçim:** `Ctrl` + tık (tek tek), `Shift` + tık (aralık). Seçili oturumlar birlikte sürüklenir/taşınır.
 - **Klasör işlemleri (sağ tık):** yeniden adlandır, yukarı/aşağı taşı, gizle,
   *başka klasörün altına kat* (ör. bir projeyi yeni bir klasöre taşıdıysan, eski klasörde kalan oturumları

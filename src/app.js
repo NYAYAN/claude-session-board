@@ -12,6 +12,8 @@
   const SAVE_DELAY_MS = 250;
   const OPENING_TIMEOUT_MS = 10000;
   const LINK_PREFIX = 'claude://claude.ai/epitaxy/';
+  // "Gruba taşı" menüsünde ilk bakışta gösterilen grup sayısı; kalanlar "Daha fazla" ile açılır.
+  const MENU_GROUP_LIMIT = 5;
 
   /** @type {Array<{id:string,title:string,cwd:string,workspace:string,workspaceKey:string,branch:?string,archived:boolean,createdAt:number,lastActivityAt:number}>} */
   let sessions = [];
@@ -52,6 +54,8 @@
   let dragWs = null;
   let dropEl = null;
   let menuEl = null;
+  // Son açılan menünün yeri: "Daha fazla" menüyü aynı yerde genişletip yeniden açar.
+  let menuPos = null;
   let currentModel = [];
   // Filtre (arama/gizli/favori) uygulanmadan önceki tam klasör sırası; sıralama işlemleri bunun üzerinde yapılır.
   let allOrder = [];
@@ -184,13 +188,15 @@
       ws.collapsed = !!st.collapsed;
       ws.ungroupedCollapsed = !!st.ungroupedCollapsed;
       ws.merged = Object.keys(state.aliases).filter((src) => state.aliases[src] === ws.key);
-      ws.groups = st.groups.map((g) => ({ id: g.id, name: g.name, collapsed: !!g.collapsed, sessions: [] }));
+      ws.groups = st.groups.map((g) => ({ id: g.id, name: g.name, collapsed: !!g.collapsed, order: g.order, sessions: [] }));
       const groupOf = new Map(ws.groups.map((g) => [g.id, g]));
       ws.ungrouped = [];
       for (const s of ws.sessions) {
         const g = groupOf.get(state.assignments[s.id]);
         (g ? g.sessions : ws.ungrouped).push(s);
       }
+      for (const g of ws.groups) sortByOrder(g.sessions, g.order);
+      sortByOrder(ws.ungrouped, st.ungroupedOrder);
     }
 
     // Elle sıralanan klasörler önce (kayıtlı sırayla), kalanlar son etkinliğe göre.
@@ -210,6 +216,16 @@
     if (state.prefs.favoritesOnly) list = list.filter((ws) => ws.favorite);
     if (q) list = list.filter((ws) => ws.sessions.length > 0);
     return list;
+  }
+
+  /**
+   * Elle verilen sıraya göre dizer. Sırada olmayanlar (yeni oturumlar, menüyle taşınanlar) en üstte
+   * kalır ve kendi aralarında son etkinliğe göre dizilir (gelen liste zaten öyle sıralı, sort kararlı).
+   */
+  function sortByOrder(list, order) {
+    if (!Array.isArray(order) || order.length === 0) return;
+    const pos = new Map(order.map((id, i) => [id, i]));
+    list.sort((a, b) => (pos.has(a.id) ? pos.get(a.id) : -1) - (pos.has(b.id) ? pos.get(b.id) : -1));
   }
 
   function matches(s, q) {
@@ -380,7 +396,7 @@
   function renderTip() {
     const box = el('div', 'tip');
     box.innerHTML =
-      'Klasör satırındaki <b>+</b> ile grup ekle, oturumları gruba <b>sürükle</b>. ' +
+      'Klasör satırındaki <b>+</b> ile grup ekle, oturumları gruba ya da grup içinde istediğin yere <b>sürükle</b>. ' +
       'Klasörleri ve grupları sürükleyerek sırala, <b>☆</b> ile favorilere ekle. ' +
       '<b>Ctrl</b>/<b>Shift</b> ile çoklu seçim, <b>sağ tık</b> ile tüm işlemler. ' +
       'Oturumun üzerine gelince çıkan düğmelerle <b>terminalde</b> ya da <b>Claude\'da</b> aç.';
@@ -715,8 +731,63 @@
 
   function moveSessions(ids, wsKey, gid) {
     applyAssign(ids, wsKey, gid);
+    dropFromOrders(wsKey, ids);
     selected.clear();
     commit();
+  }
+
+  /** Oturumları klasördeki tüm elle sıralardan çıkarır (taşınınca eski konumları unutulsun). */
+  function dropFromOrders(wsKey, ids) {
+    const w = wsState(wsKey);
+    const drop = (order) => (Array.isArray(order) ? order.filter((id) => !ids.includes(id)) : order);
+    for (const g of w.groups) if (g.order) g.order = drop(g.order);
+    if (w.ungroupedOrder) w.ungroupedOrder = drop(w.ungroupedOrder);
+  }
+
+  /**
+   * Oturumları gruba (gid boşsa Grupsuz'a) taşır ve hedef oturumun önüne/arkasına yerleştirir;
+   * targetId yoksa en üste. Görünen sıra elle sıra olarak kaydedilir; görünmeyenler (arşivliler)
+   * eski sıralarıyla sona eklenir.
+   */
+  function placeSessions(ids, wsKey, gid, targetId, after) {
+    const ws = currentModel.find((w) => w.key === wsKey);
+    const list = gid ? ws?.groups.find((g) => g.id === gid)?.sessions : ws?.ungrouped;
+    if (!list || ids.includes(targetId)) return;
+    const shown = visibleSessionIds();
+    const at = (id) => (shown.includes(id) ? shown.indexOf(id) : Infinity);
+    const moving = ids.filter((id) => byId.has(id) && resolveKey(byId.get(id).workspaceKey) === wsKey).sort((a, b) => at(a) - at(b));
+    if (moving.length === 0) return;
+    const order = list.map((s) => s.id).filter((id) => !moving.includes(id));
+    const t = targetId ? order.indexOf(targetId) : 0;
+    if (t < 0) return;
+    order.splice(targetId && after ? t + 1 : t, 0, ...moving);
+
+    const w = wsState(wsKey);
+    const g = gid ? w.groups.find((x) => x.id === gid) : null;
+    const old = (gid ? g?.order : w.ungroupedOrder) || [];
+    applyAssign(moving, wsKey, gid);
+    dropFromOrders(wsKey, moving);
+    const inHere = (id) => byId.has(id) && resolveKey(byId.get(id).workspaceKey) === wsKey && (state.assignments[id] || '') === gid;
+    const next = [...order, ...old.filter((id) => !order.includes(id) && inHere(id))];
+    if (g) g.order = next;
+    else w.ungroupedOrder = next;
+    selected.clear();
+    commit();
+  }
+
+  /** Elle sırayı unutur: oturumlar yeniden son etkinliğe göre dizilir (gid undefined: klasörün tümü). */
+  function resetOrder(wsKey, gid) {
+    const w = wsState(wsKey);
+    for (const g of w.groups) if (gid === undefined || g.id === gid) delete g.order;
+    if (gid === undefined || gid === '') delete w.ungroupedOrder;
+    commit();
+  }
+
+  function hasOrder(wsKey, gid) {
+    const w = peekWs(wsKey);
+    const has = (o) => Array.isArray(o) && o.length > 0;
+    if (gid === undefined) return has(w.ungroupedOrder) || w.groups.some((g) => has(g.order));
+    return gid ? has(w.groups.find((g) => g.id === gid)?.order) : has(w.ungroupedOrder);
   }
 
   function addGroup(wsKey, moveIds) {
@@ -916,6 +987,7 @@
   function showMenu(x, y, items) {
     closeMenu();
     interacting++;
+    menuPos = { x, y };
     menuEl = el('div', 'menu');
     menuEl.setAttribute('role', 'menu');
     for (const it of items) {
@@ -967,6 +1039,7 @@
       { sep: true },
       { label: 'Yukarı taşı', disabled: searching || idx <= 0, action: () => moveWorkspace(wsKey, -1) },
       { label: 'Aşağı taşı', disabled: searching || idx >= currentModel.length - 1, action: () => moveWorkspace(wsKey, 1) },
+      { label: 'Oturumları son etkinliğe göre sırala', disabled: !hasOrder(wsKey), action: () => resetOrder(wsKey) },
     ];
     if (ws.merged.length > 0) {
       items.push({ sep: true }, { header: 'Katılmış klasörler' });
@@ -990,12 +1063,13 @@
       { label: 'Yeniden adlandır', action: () => renameGroup(wsKey, gid) },
       { label: 'Yukarı taşı', disabled: i <= 0, action: () => moveGroup(wsKey, gid, -1) },
       { label: 'Aşağı taşı', disabled: i < 0 || i >= groups.length - 1, action: () => moveGroup(wsKey, gid, 1) },
+      { label: 'Oturumları son etkinliğe göre sırala', disabled: !hasOrder(wsKey, gid), action: () => resetOrder(wsKey, gid) },
       { sep: true },
       { label: 'Grubu sil', danger: true, action: () => deleteGroup(wsKey, gid) },
     ];
   }
 
-  function sessionMenu(wsKey) {
+  function sessionMenu(wsKey, allGroups = false) {
     const ids = [...selected];
     const items = [];
     if (ids.length === 1) {
@@ -1011,8 +1085,15 @@
     }
     items.push({ header: ids.length > 1 ? `${ids.length} oturumu taşı` : 'Gruba taşı' });
     const current = ids.length === 1 ? state.assignments[ids[0]] || '' : null;
-    for (const g of peekWs(wsKey).groups) {
+    const groups = peekWs(wsKey).groups;
+    // Tek bir grup için "Daha fazla" satırı yer kazandırmaz; o durumda hepsi gösterilir.
+    const shown = allGroups || groups.length <= MENU_GROUP_LIMIT + 1 ? groups : groups.slice(0, MENU_GROUP_LIMIT);
+    for (const g of shown) {
       items.push({ label: g.name, disabled: current === g.id, action: () => moveSessions(ids, wsKey, g.id) });
+    }
+    if (shown.length < groups.length) {
+      const more = groups.length - shown.length;
+      items.push({ label: `Daha fazla (${more})…`, action: () => showMenu(menuPos.x, menuPos.y, sessionMenu(wsKey, true)) });
     }
     items.push({ label: 'Grupsuz', disabled: current === '', action: () => moveSessions(ids, wsKey, '') });
     items.push({ label: 'Yeni gruba…', action: () => addGroup(wsKey, ids) });
@@ -1226,10 +1307,24 @@
     for (const r of treeEl.querySelectorAll('.row.session')) r.classList.toggle('selected', selected.has(r.dataset.id));
   });
 
-  function dropTargetOf(e) {
+  /**
+   * Oturum sürüklenirken hedef. Başka bir oturumun üzerinde: üst yarısındaysa önüne, değilse
+   * arkasına (aynı ya da başka grup; grupsuz klasörde de). Grup başlığında/boş grupta: grubun en
+   * üstüne. Aramada sıra anlamsız olduğundan yalnız grup hedefi vardır ve sıra değişmez.
+   */
+  function sessionDropOf(e) {
+    if (!dragIds) return null;
+    const searching = query.trim() !== '';
+    const row = e.target.closest('.row.session');
+    if (row && !searching) {
+      if (row.dataset.ws !== dragWs || dragIds.includes(row.dataset.id)) return null;
+      const r = row.getBoundingClientRect();
+      const after = e.clientY > r.top + r.height / 2;
+      return { row, gid: row.closest('.group')?.dataset.dropGroup ?? '', targetId: row.dataset.id, after };
+    }
     const box = e.target.closest('.group');
-    if (!box || !dragIds || box.dataset.dropWs !== dragWs) return null;
-    return box;
+    if (!box || box.dataset.dropWs !== dragWs) return null;
+    return { box, gid: box.dataset.dropGroup, searching };
   }
 
   function setDropEl(box) {
@@ -1244,6 +1339,7 @@
     dragIds = null;
     dragWs = null;
     setDropEl(null);
+    setOrderDrop(null);
     treeEl.classList.remove('dragging');
     release();
   }
@@ -1308,9 +1404,10 @@
       }
       return;
     }
-    const box = dropTargetOf(e);
-    setDropEl(box);
-    if (box) {
+    const target = sessionDropOf(e);
+    setDropEl(target?.box || null);
+    setOrderDrop(target?.row ? { box: target.row, after: target.after } : null);
+    if (target) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
     }
@@ -1344,14 +1441,14 @@
       }
       return;
     }
-    const box = dropTargetOf(e);
-    if (!box) return;
+    const target = sessionDropOf(e);
+    if (!target) return;
     e.preventDefault();
     const ids = dragIds;
-    const wsKey = box.dataset.dropWs;
-    const gid = box.dataset.dropGroup;
+    const wsKey = dragWs;
     endDrag();
-    moveSessions(ids, wsKey, gid);
+    if (target.searching) moveSessions(ids, wsKey, target.gid);
+    else placeSessions(ids, wsKey, target.gid, target.targetId || null, !!target.after);
   });
 
   treeEl.addEventListener('dragend', () => {

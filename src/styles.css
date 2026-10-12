@@ -231,6 +231,10 @@ header {
 
 .session.term-active { box-shadow: inset 2px 0 0 var(--accent); }
 
+/* oturum sürükle-bırak sıralama göstergesi (sürükleme sırasında terminal çizgisinin yerine geçer) */
+.session.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.session.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+
 /* Aç düğmeleri yalnız üzerine gelince; yer açmak için o sırada zaman gizlenir. */
 .session:hover .time { display: none; }
 .row-btn:disabled { color: var(--faint); opacity: 0.5; cursor: default; }
