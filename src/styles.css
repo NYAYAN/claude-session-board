@@ -214,10 +214,12 @@ header {
 .row-btn svg { width: 13px; height: 13px; }
 
 .group-row { padding-left: 24px; font-weight: 500; cursor: pointer; }
+.subgroup > .group-row { padding-left: 40px; }
 .ungrouped > .group-row .name { color: var(--muted); font-style: italic; font-weight: 400; }
 
 .session { padding-left: 32px; cursor: pointer; }
 .session.depth-2 { padding-left: 46px; }
+.session.depth-3 { padding-left: 62px; }
 .session.selected { background: var(--selected); }
 .session.archived .name { color: var(--muted); font-style: italic; }
 
@@ -278,6 +280,7 @@ header {
 .dragging .session.selected { background: var(--selected); }
 
 .note { padding: 3px 8px 3px 46px; color: var(--faint); font-style: italic; }
+.subgroup .note { padding-left: 62px; }
 
 .empty { padding: 48px 20px; color: var(--muted); text-align: center; }
 .empty small { display: block; margin-top: 6px; color: var(--faint); word-break: break-all; }

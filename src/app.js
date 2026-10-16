@@ -142,6 +142,31 @@
     return k;
   }
 
+  /**
+   * Grubun üst grubu; üst seviyedeyse ''. Alt grup tek seviyedir: üstü kendisi de alt grupsa
+   * (ya da artık yoksa) grup üst seviyede sayılır. Eski sürümler `parent`'ı bilmez, alt grupları
+   * üst seviyede gösterir.
+   */
+  function parentOf(groups, g) {
+    const p = g?.parent ? groups.find((x) => x.id === g.parent) : null;
+    return p && p !== g && !p.parent ? p.id : '';
+  }
+
+  function hasSubgroups(groups, gid) {
+    return groups.some((x) => parentOf(groups, x) === gid);
+  }
+
+  /** Grupları ağaç sırasında düzleştirir: her üst grubun hemen ardından kendi alt grupları. */
+  function groupTree(groups) {
+    const out = [];
+    for (const g of groups) {
+      if (parentOf(groups, g)) continue;
+      out.push({ g, sub: false });
+      for (const c of groups) if (parentOf(groups, c) === g.id) out.push({ g: c, sub: true });
+    }
+    return out;
+  }
+
   function scheduleSave() {
     if (!stateLoaded) return;
     clearTimeout(saveTimer);
@@ -188,14 +213,27 @@
       ws.collapsed = !!st.collapsed;
       ws.ungroupedCollapsed = !!st.ungroupedCollapsed;
       ws.merged = Object.keys(state.aliases).filter((src) => state.aliases[src] === ws.key);
-      ws.groups = st.groups.map((g) => ({ id: g.id, name: g.name, collapsed: !!g.collapsed, order: g.order, sessions: [] }));
+      // ws.groups düz liste (alt gruplar dahil; sıralama işlemleri id ile buradan bulur),
+      // ws.topGroups çizilecek üst gruplar; alt gruplar üstlerinin `subgroups`'unda.
+      ws.groups = st.groups.map((g) => ({
+        id: g.id,
+        name: g.name,
+        collapsed: !!g.collapsed,
+        order: g.order,
+        parent: parentOf(st.groups, g),
+        sessions: [],
+        subgroups: [],
+      }));
       const groupOf = new Map(ws.groups.map((g) => [g.id, g]));
+      for (const g of ws.groups) if (g.parent) groupOf.get(g.parent).subgroups.push(g);
+      ws.topGroups = ws.groups.filter((g) => !g.parent);
       ws.ungrouped = [];
       for (const s of ws.sessions) {
         const g = groupOf.get(state.assignments[s.id]);
         (g ? g.sessions : ws.ungrouped).push(s);
       }
       for (const g of ws.groups) sortByOrder(g.sessions, g.order);
+      for (const g of ws.groups) g.total = g.sessions.length + g.subgroups.reduce((n, c) => n + c.sessions.length, 0);
       sortByOrder(ws.ungrouped, st.ungroupedOrder);
     }
 
@@ -313,8 +351,8 @@
 
     const kids = el('div', 'children');
     if (ws.groups.length > 0) {
-      for (const g of ws.groups) {
-        if (searching && g.sessions.length === 0) continue;
+      for (const g of ws.topGroups) {
+        if (searching && g.total === 0) continue;
         kids.append(renderGroup(ws, g, searching));
       }
       if (!searching || ws.ungrouped.length > 0) {
@@ -329,7 +367,8 @@
   }
 
   function renderGroup(ws, g, searching) {
-    const box = el('div', 'group' + (g.pseudo ? ' ungrouped' : ''));
+    const sub = !!g.parent;
+    const box = el('div', 'group' + (g.pseudo ? ' ungrouped' : '') + (sub ? ' subgroup' : ''));
     // Sürükle-bırak hedefi grubun tamamıdır (başlık + içindeki oturumlar).
     box.dataset.dropWs = ws.key;
     box.dataset.dropGroup = g.id;
@@ -342,13 +381,21 @@
     row.setAttribute('role', 'treeitem');
     row.setAttribute('aria-expanded', String(open));
     row.draggable = !searching && !g.pseudo;
-    row.append(chevron(open), span('name', g.name), span('count', String(g.sessions.length)));
+    row.append(chevron(open), span('name', g.name), span('count', String(g.total ?? g.sessions.length)));
+    if (!g.pseudo && !sub) row.append(rowButton(ICONS.plus, 'Alt grup ekle', 'add-subgroup'));
     box.append(row);
 
     if (open) {
       const kids = el('div', 'children');
-      for (const s of g.sessions) kids.append(renderSession(s, ws.key, 2));
-      if (g.sessions.length === 0 && !g.pseudo) kids.append(span('note', 'Oturumları buraya sürükle', 'div'));
+      // Alt gruplar grubun kendi oturumlarından önce.
+      for (const c of g.subgroups || []) {
+        if (searching && c.sessions.length === 0) continue;
+        kids.append(renderGroup(ws, c, searching));
+      }
+      for (const s of g.sessions) kids.append(renderSession(s, ws.key, sub ? 3 : 2));
+      if (g.sessions.length === 0 && !g.subgroups?.length && !g.pseudo) {
+        kids.append(span('note', 'Oturumları buraya sürükle', 'div'));
+      }
       box.append(kids);
     }
     return box;
@@ -790,9 +837,16 @@
     return gid ? has(w.groups.find((g) => g.id === gid)?.order) : has(w.ungroupedOrder);
   }
 
-  function addGroup(wsKey, moveIds) {
+  /** Yeni grup açar; parentId verilirse o üst grubun altında alt grup olarak. */
+  function addGroup(wsKey, moveIds, parentId) {
     const w = wsState(wsKey);
-    const g = { id: crypto.randomUUID(), name: 'Yeni grup', collapsed: false };
+    const g = { id: crypto.randomUUID(), name: parentId ? 'Yeni alt grup' : 'Yeni grup', collapsed: false };
+    if (parentId) {
+      const p = w.groups.find((x) => x.id === parentId);
+      if (!p || parentOf(w.groups, p)) return;
+      g.parent = parentId;
+      p.collapsed = false;
+    }
     w.groups.push(g);
     w.collapsed = false;
     if (moveIds) {
@@ -831,26 +885,64 @@
     });
   }
 
+  /** Grubun kardeşleri: aynı üst grubun alt grupları ya da (üst seviyedeyse) üst seviye gruplar. */
+  function siblingsOf(groups, g) {
+    const parent = parentOf(groups, g);
+    return groups.filter((x) => parentOf(groups, x) === parent);
+  }
+
+  /** Yukarı/aşağı: aynı seviyedeki komşu grubun önüne/arkasına taşır. */
   function moveGroup(wsKey, gid, dir) {
     const groups = wsState(wsKey).groups;
-    const i = groups.findIndex((g) => g.id === gid);
-    const j = i + dir;
-    if (i < 0 || j < 0 || j >= groups.length) return;
-    [groups[i], groups[j]] = [groups[j], groups[i]];
+    const g = groups.find((x) => x.id === gid);
+    if (!g) return;
+    const sibs = siblingsOf(groups, g);
+    const neighbor = sibs[sibs.indexOf(g) + dir];
+    if (neighbor) placeGroup(wsKey, gid, neighbor.id, dir > 0);
+  }
+
+  /**
+   * Grup hedefin yanına bırakılabilir mi: hedef kendisi ya da kendi alt grubu olamaz, alt grubu olan
+   * bir grup alt grup olamaz (tek seviye). Hedef boşsa (Grupsuz) her zaman olur.
+   */
+  function canPlaceGroup(groups, gid, targetGid) {
+    if (gid === targetGid || !groups.some((x) => x.id === gid)) return false;
+    if (!targetGid) return true;
+    const target = groups.find((x) => x.id === targetGid);
+    if (!target) return false;
+    const parent = parentOf(groups, target);
+    return !parent || (parent !== gid && !hasSubgroups(groups, gid));
+  }
+
+  /**
+   * Grubu aynı klasördeki hedef grubun önüne/arkasına koyar ve hedefin seviyesine geçer: bir alt
+   * grubun yanına bırakılan grup o üst grubun alt grubu, üst seviye bir grubun yanına bırakılan alt
+   * grup üst seviye olur. Hedef boşsa (Grupsuz) üst seviyede sona.
+   */
+  function placeGroup(wsKey, gid, targetGid, after) {
+    const w = wsState(wsKey);
+    if (!canPlaceGroup(w.groups, gid, targetGid)) return;
+    const g = w.groups.find((x) => x.id === gid);
+    const target = targetGid ? w.groups.find((x) => x.id === targetGid) : null;
+    const parent = target ? parentOf(w.groups, target) : '';
+    const rest = w.groups.filter((x) => x !== g);
+    const t = target ? rest.indexOf(target) : rest.length;
+    rest.splice(target && after ? t + 1 : t, 0, g);
+    if (parent) g.parent = parent;
+    else delete g.parent;
+    w.groups = rest;
     commit();
   }
 
-  /** Grubu aynı klasördeki hedef grubun önüne/arkasına koyar; hedef boşsa (Grupsuz) sona. */
-  function placeGroup(wsKey, gid, targetGid, after) {
-    if (gid === targetGid) return;
+  /** Üst seviye bir grubu başka bir üst grubun altına, son alt grup olarak taşır. */
+  function nestGroup(wsKey, gid, parentId) {
     const w = wsState(wsKey);
     const g = w.groups.find((x) => x.id === gid);
-    if (!g) return;
-    const rest = w.groups.filter((x) => x !== g);
-    const t = targetGid ? rest.findIndex((x) => x.id === targetGid) : rest.length;
-    if (t < 0) return;
-    rest.splice(after ? t + 1 : t, 0, g);
-    w.groups = rest;
+    const p = w.groups.find((x) => x.id === parentId);
+    if (!g || !p || g === p || parentOf(w.groups, p) || hasSubgroups(w.groups, gid)) return;
+    w.groups = [...w.groups.filter((x) => x !== g), g];
+    g.parent = parentId;
+    p.collapsed = false;
     commit();
   }
 
@@ -891,20 +983,32 @@
     if (w.hidden && !state.prefs.showHidden) flash('Klasör gizlendi · ⋯ → “Gizli klasörleri göster”');
   }
 
+  /**
+   * Grubu siler. Üst grup alt gruplarıyla birlikte gider, oturumları Grupsuz'a döner; alt grubun
+   * oturumları ise üst grubuna döner (konunun içinde kalırlar).
+   */
   async function deleteGroup(wsKey, gid) {
     const w = wsState(wsKey);
     const g = w.groups.find((x) => x.id === gid);
     if (!g) return;
-    const count = Object.values(state.assignments).filter((v) => v === gid).length;
-    const ok = await confirmDialog(
-      `“${g.name}” grubu silinsin mi?`,
-      count > 0 ? `İçindeki ${count} oturum Grupsuz'a döner. Oturumların kendisi silinmez.` : 'Grup boş.',
-      'Sil',
-      true,
-    );
+    const parent = w.groups.find((x) => x.id === parentOf(w.groups, g));
+    const subs = w.groups.filter((x) => parentOf(w.groups, x) === gid);
+    const doomed = new Set([gid, ...subs.map((x) => x.id)]);
+    const count = Object.values(state.assignments).filter((v) => doomed.has(v)).length;
+    const parts = [];
+    if (subs.length > 0) parts.push(`${subs.length} alt grubu da silinir.`);
+    if (count > 0) {
+      const where = parent ? `“${parent.name}” grubuna` : "Grupsuz'a";
+      parts.push(`İçindeki ${count} oturum ${where} döner. Oturumların kendisi silinmez.`);
+    }
+    const ok = await confirmDialog(`“${g.name}” grubu silinsin mi?`, parts.join(' ') || 'Grup boş.', 'Sil', true);
     if (!ok) return;
-    w.groups = w.groups.filter((x) => x.id !== gid);
-    for (const [sid, v] of Object.entries(state.assignments)) if (v === gid) delete state.assignments[sid];
+    w.groups = w.groups.filter((x) => !doomed.has(x.id));
+    for (const [sid, v] of Object.entries(state.assignments)) {
+      if (!doomed.has(v)) continue;
+      if (parent) state.assignments[sid] = parent.id;
+      else delete state.assignments[sid];
+    }
     commit();
   }
 
@@ -1001,7 +1105,7 @@
       }
       const b = el('button', 'menu-item' + (it.danger ? ' danger' : '') + (it.checked ? ' on' : ''));
       b.textContent = it.label;
-      b.title = it.label;
+      b.title = it.title || it.label;
       b.disabled = !!it.disabled;
       b.setAttribute('role', it.checked !== undefined ? 'menuitemcheckbox' : 'menuitem');
       b.addEventListener('click', () => {
@@ -1058,18 +1162,34 @@
 
   function groupMenu(wsKey, gid) {
     const groups = peekWs(wsKey).groups;
-    const i = groups.findIndex((g) => g.id === gid);
-    return [
-      { label: 'Yeniden adlandır', action: () => renameGroup(wsKey, gid) },
+    const g = groups.find((x) => x.id === gid);
+    if (!g) return [];
+    const parent = parentOf(groups, g);
+    const sibs = siblingsOf(groups, g);
+    const i = sibs.indexOf(g);
+    const items = [{ label: 'Yeniden adlandır', action: () => renameGroup(wsKey, gid) }];
+    if (!parent) items.push({ label: 'Alt grup ekle', action: () => addGroup(wsKey, null, gid) });
+    items.push(
       { label: 'Yukarı taşı', disabled: i <= 0, action: () => moveGroup(wsKey, gid, -1) },
-      { label: 'Aşağı taşı', disabled: i < 0 || i >= groups.length - 1, action: () => moveGroup(wsKey, gid, 1) },
+      { label: 'Aşağı taşı', disabled: i < 0 || i >= sibs.length - 1, action: () => moveGroup(wsKey, gid, 1) },
       { label: 'Oturumları son etkinliğe göre sırala', disabled: !hasOrder(wsKey, gid), action: () => resetOrder(wsKey, gid) },
-      { sep: true },
-      { label: 'Grubu sil', danger: true, action: () => deleteGroup(wsKey, gid) },
-    ];
+    );
+    if (parent) {
+      items.push({ sep: true }, { label: 'Üst seviyeye çıkar', action: () => placeGroup(wsKey, gid, parent, true) });
+    } else if (!hasSubgroups(groups, gid)) {
+      // Alt grubu olan grup başka bir grubun altına giremez (alt gruplar tek seviye).
+      const others = groups.filter((x) => x !== g && !parentOf(groups, x));
+      if (others.length > 0) {
+        items.push({ sep: true }, { header: 'Şunun altına taşı' });
+        for (const o of others) items.push({ label: o.name, action: () => nestGroup(wsKey, gid, o.id) });
+      }
+    }
+    items.push({ sep: true }, { label: 'Grubu sil', danger: true, action: () => deleteGroup(wsKey, gid) });
+    return items;
   }
 
-  function sessionMenu(wsKey, allGroups = false) {
+  /** clickedGid: sağ tıklanan oturumun grubu; "Yeni alt gruba…" onun (alt gruptaysa üstünün) altında açar. */
+  function sessionMenu(wsKey, allGroups = false, clickedGid = '') {
     const ids = [...selected];
     const items = [];
     if (ids.length === 1) {
@@ -1086,17 +1206,29 @@
     items.push({ header: ids.length > 1 ? `${ids.length} oturumu taşı` : 'Gruba taşı' });
     const current = ids.length === 1 ? state.assignments[ids[0]] || '' : null;
     const groups = peekWs(wsKey).groups;
+    // Ağaç sırası: her grubun ardından alt grupları (↳ ile).
+    const tree = groupTree(groups);
     // Tek bir grup için "Daha fazla" satırı yer kazandırmaz; o durumda hepsi gösterilir.
-    const shown = allGroups || groups.length <= MENU_GROUP_LIMIT + 1 ? groups : groups.slice(0, MENU_GROUP_LIMIT);
-    for (const g of shown) {
-      items.push({ label: g.name, disabled: current === g.id, action: () => moveSessions(ids, wsKey, g.id) });
+    const shown = allGroups || tree.length <= MENU_GROUP_LIMIT + 1 ? tree : tree.slice(0, MENU_GROUP_LIMIT);
+    for (const { g, sub } of shown) {
+      const label = (sub ? '↳ ' : '') + g.name;
+      items.push({ label, disabled: current === g.id, action: () => moveSessions(ids, wsKey, g.id) });
     }
-    if (shown.length < groups.length) {
-      const more = groups.length - shown.length;
-      items.push({ label: `Daha fazla (${more})…`, action: () => showMenu(menuPos.x, menuPos.y, sessionMenu(wsKey, true)) });
+    if (shown.length < tree.length) {
+      const more = tree.length - shown.length;
+      items.push({ label: `Daha fazla (${more})…`, action: () => showMenu(menuPos.x, menuPos.y, sessionMenu(wsKey, true, clickedGid)) });
     }
     items.push({ label: 'Grupsuz', disabled: current === '', action: () => moveSessions(ids, wsKey, '') });
     items.push({ label: 'Yeni gruba…', action: () => addGroup(wsKey, ids) });
+    const clicked = groups.find((g) => g.id === clickedGid);
+    const top = clicked ? groups.find((g) => g.id === (parentOf(groups, clicked) || clicked.id)) : null;
+    if (top) {
+      items.push({
+        label: 'Yeni alt gruba…',
+        title: `“${top.name}” içinde yeni alt grup açar, seçilenleri oraya taşır`,
+        action: () => addGroup(wsKey, ids, top.id),
+      });
+    }
     return items;
   }
 
@@ -1205,6 +1337,7 @@
     if (action) {
       e.stopPropagation();
       if (action === 'add-group') addGroup(row.dataset.ws);
+      else if (action === 'add-subgroup') addGroup(row.dataset.ws, null, row.dataset.group);
       else if (action === 'fav') toggleFavorite(row.dataset.ws);
       else if (action === 'hide') toggleHidden(row.dataset.ws);
       else if (action === 'open-terminal') openInTerminal(row.dataset.id);
@@ -1256,7 +1389,7 @@
         anchorId = id;
         render();
       }
-      showMenu(e.clientX, e.clientY, sessionMenu(ws));
+      showMenu(e.clientX, e.clientY, sessionMenu(ws, false, row.closest('.group')?.dataset.dropGroup ?? ''));
     }
   });
 
@@ -1355,16 +1488,25 @@
     return { box, key, after };
   }
 
-  /** Grup sürüklenirken: aynı klasördeki grubun önüne/arkasına; Grupsuz'un üzerine bırakmak sona koyar. */
+  /**
+   * Grup sürüklenirken: aynı klasördeki grubun önüne/arkasına (hedefin seviyesine geçer; bkz.
+   * placeGroup); Grupsuz'un üzerine bırakmak sona koyar. İmlecin altındaki alt grup hedef olamıyorsa
+   * (ör. alt gruplu bir grup sürükleniyor) onu içeren üst grup denenir.
+   */
   function groupDropOf(e) {
-    const box = e.target.closest('.group');
-    if (!box || !dragGroup || box.dataset.dropWs !== dragGroup.ws) return null;
-    const gid = box.dataset.dropGroup;
-    if (gid === dragGroup.id) return null;
-    if (!gid) return { box, gid, after: false };
-    const rowRect = box.querySelector('.group-row').getBoundingClientRect();
-    const after = e.clientY > rowRect.top + rowRect.height / 2;
-    return { box, gid, after };
+    if (!dragGroup) return null;
+    const groups = peekWs(dragGroup.ws).groups;
+    for (let box = e.target.closest('.group'); box; box = box.parentElement?.closest('.group')) {
+      if (box.dataset.dropWs !== dragGroup.ws) return null;
+      const gid = box.dataset.dropGroup;
+      if (gid === dragGroup.id) return null; // kendi üzerine: yerinde kalır
+      if (!canPlaceGroup(groups, dragGroup.id, gid)) continue;
+      if (!gid) return { box, gid, after: false };
+      const rowRect = box.querySelector('.group-row').getBoundingClientRect();
+      const after = e.clientY > rowRect.top + rowRect.height / 2;
+      return { box, gid, after };
+    }
+    return null;
   }
 
   function setOrderDrop(target) {

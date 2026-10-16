@@ -24,12 +24,23 @@ varken görünür; hiç grubu olmayan bir klasörde oturumlar doğrudan klasör�
 silmek onay ister: içindeki oturumlar *Grupsuz*'a döner, oturumların kendisi silinmez. Gruplar ve
 *Grupsuz* ayrı ayrı daraltılabilir.
 
+**Alt gruplar.** Bir konunun oturumlarını grubun içinde ayrıca toplamak için grup satırındaki **+** (ya da
+sağ tık → *Alt grup ekle*) grubun altında bir alt grup açar. Seçili oturumlarla birlikte açmak için
+oturuma sağ tık → *Yeni alt gruba…*: oturumun bulunduğu grubun altında yeni bir alt grup açılır ve seçilenler
+oraya taşınır. Alt gruplar tek seviyedir: alt grubun altına alt grup açılmaz. Grubun sayısı alt gruplardaki
+oturumları da içerir. Alt grubu silmek oturumlarını üst grubuna döndürür; üst grubu silmek alt gruplarını
+da siler ve bütün oturumları *Grupsuz*'a döndürür. Var olan bir grup sağ tık → *Şunun altına taşı* ile
+başka bir grubun alt grubu olur, *Üst seviyeye çıkar* ile geri döner.
+
 **Sürükle-bırak.** Üç şey sürüklenir: klasör, grup ve oturum. Bırakma konumu ince turuncu bir çizgiyle
 gösterilir; imleç hedef satırın üst yarısındaysa önüne, alt yarısındaysa arkasına bırakılır.
 
 - **Klasör** başka bir klasörün önüne ya da arkasına bırakılır.
 - **Grup** yalnızca kendi klasörü içinde taşınır; *Grupsuz*'un üzerine bırakmak grubu sona koyar.
-  Başka klasöre taşınamaz, çünkü oturumlar klasörlerine bağlı: grup gitse içindekiler gidemezdi.
+  Başka klasöre taşınamaz, çünkü oturumlar klasörlerine bağlı: grup gitse içindekiler gidemezdi. Grup,
+  bırakıldığı yerdeki grubun seviyesine geçer: bir alt grubun önüne ya da arkasına bırakılan grup o üst
+  grubun alt grubu olur, üst seviye bir grubun yanına bırakılan alt grup üst seviyeye çıkar. Alt grubu
+  olan bir grup başka bir grubun altına bırakılamaz.
 - **Oturum** başka bir oturumun üzerine bırakılınca önüne ya da arkasına geçer. Hedef aynı gruptaysa
   yalnızca sıra değişir; başka bir gruptaysa oturum o gruba, tam o konuma taşınır. Grubun başlık satırına
   (ya da boş bir gruba) bırakmak oturumu en üste koyar; *Grupsuz*'a bırakmak gruptan çıkarır. Oturumlar
@@ -50,8 +61,8 @@ seçenek soluk görünür.
 
 | Nerede | Neler var |
 |---|---|
-| Oturum | Terminalde aç, *Kopyasını terminalde aç*, Claude'da aç, Bağlantıyı kopyala; *Gruba taşı*: gruplar, *Grupsuz*, *Yeni gruba…* |
-| Grup | Yeniden adlandır, Yukarı / Aşağı taşı, Oturumları son etkinliğe göre sırala, Grubu sil |
+| Oturum | Terminalde aç, *Kopyasını terminalde aç*, Claude'da aç, Bağlantıyı kopyala; *Gruba taşı*: gruplar ve alt grupları (↳), *Grupsuz*, *Yeni gruba…*, *Yeni alt gruba…* (oturum bir gruptaysa) |
+| Grup | Yeniden adlandır, *Alt grup ekle*, Yukarı / Aşağı taşı (aynı seviyede), Oturumları son etkinliğe göre sırala, *Şunun altına taşı* / *Üst seviyeye çıkar*, Grubu sil |
 | Klasör | Grup ekle, Yeniden adlandır, Favori, Gizle, Yukarı / Aşağı taşı, Oturumları son etkinliğe göre sırala, *Ayır* (birleştirilmişse), *Bu klasörü şunun altına kat* |
 
 Birden çok oturum seçiliyken oturum menüsü yalnızca taşıma seçeneklerini gösterir (*N oturumu taşı*).
