@@ -12,7 +12,6 @@ Kaynaktan derleme, mimari, testler ve yayın süreci. Adım adım derleme için
 - [Bilinen sınırlar](#bilinen-sınırlar)
 
 ## Gereksinimler
-
 | | |
 |---|---|
 | Windows | 10 / 11 (ConPTY gerektirir) |
@@ -22,7 +21,7 @@ Kaynaktan derleme, mimari, testler ve yayın süreci. Adım adım derleme için
 | Visual Studio | 2022 ya da Build Tools, "C++ ile masaüstü geliştirme" bileşeni |
 
 Uygulama yalnızca Windows'ta çalışıyor: Claude masaüstü kayıtlarının yeri, ConPTY ve `claude://`
-protokol işleyicisi Windows'a özgü.
+protokol işleyicisi Windows'a özgü. Ercan Akar
 
 ## Kurulum ve çalıştırma
 
