@@ -85,7 +85,9 @@ bilgisayarınızı korudu" (*Windows protected your PC*) diyebilir: **Ek bilgi**
 v0.1.0 kullanıyorsanız o sürümde güncelleyici yok; yeni sürümü bir kez elle kurun. Gruplarınız ve
 sıralarınız kurulumdan etkilenmez.
 
-**Gerekenler.** Claude masaüstü uygulaması; oturum listesi onun kayıtlarından okunur. Windows 10'da
+**Gerekenler.** Claude masaüstü uygulaması; oturum listesi onun kayıtlarından okunur. Kayıtların yeri
+kuruluma göre değişiyor; SessionBoard onu kendisi bulur, bulamazsa *⋯ › Oturum klasörünü seç…* ile
+gösterilir. Windows 10'da
 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (Windows 11'de yerleşik).
 Gömülü terminal için bağımsız Claude Code CLI; PowerShell'de bir kez kurup giriş yapın:
 

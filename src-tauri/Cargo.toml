@@ -17,6 +17,8 @@ tauri-plugin-opener = "2"
 tauri-plugin-window-state = "2"
 # Kendini güncelleme: GitHub sürümündeki latest.json + imzalı kurulum paketi.
 tauri-plugin-updater = "2"
+# Claude'un oturum klasörü bulunamazsa kullanıcının elle seçmesi için klasör seçme penceresi.
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Gömülü terminal: Windows'ta ConPTY üzerinden sözde terminal.

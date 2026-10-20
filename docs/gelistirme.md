@@ -143,6 +143,15 @@ dışarıda bırakılıyor: terminalde izinsiz çalışmayı kullanıcının ken
 kendini masaüstüne bağlı sanıyor. Yalnızca masaüstünden açılış algılandığında (`CLAUDECODE` ya da
 `CLAUDE_CODE_ENTRYPOINT` varken) temizleniyor; kullanıcının kendi ayarlarına dokunulmuyor.
 
+**Kayıt kökü aranıyor, sabit yazılmıyor.** Claude Ekim 2026'da Store sürümünün verisini
+`%LOCALAPPDATA%\Claude-Data\` altına taşıdı ve yalnızca bilinen yollara bakan sürüm "Claude oturum klasörü
+bulunamadı" demeye başladı. Uygulamayı farklı kurulumlarla kullanan bir ekip için tek tek yol yazmak
+yetmiyor: kök, `%LOCALAPPDATA%` ve `%APPDATA%`'da adında "claude"/"anthropic" geçen klasörlerde (bir alt
+seviye) ve Store paketlerinin `LocalCache`'inde aranıyor (`sessions::roots_in`). Arama her yenilemede
+yapılıyor ama yalnızca adı uyan birkaç klasöre iniyor; maliyeti önemsiz. Son çare elle seçim:
+`prefs.sessionsDir` doluysa yalnızca o klasöre bakılıyor (`sessions::resolve_custom`), klasör seçme
+penceresi `tauri-plugin-dialog` ile Rust tarafında açılıyor (arayüze ek izin gerekmiyor).
+
 **Hesap seçimi.** Kayıtlar hesap klasörlerine ayrılıyor ama Claude'un hangi hesapla açık olduğu dosyalardan
 okunamıyor. En son etkinliğin olduğu hesap gösteriliyor.
 
@@ -168,7 +177,8 @@ Rust birim testleri:
 | `pty::conpty_ciktiyi_okur_ve_kapanir` | Gerçek bir ConPTY süreci açılıyor, çıktısı okunuyor, kapanıyor (imleç sorusu yanıtlanarak) |
 | `pty::yarim_utf8_sonraki_okumaya_kalir` | Bölünmüş çok baytlı karakter bozulmadan birleşiyor |
 | `pty::uuid_dogrulama` | `--resume`'a yalnızca biçimi doğru bir konuşma kimliği gidiyor; komut satırına sızabilecek karakterler reddediliyor |
-| `sessions::kok_klasorler_bulunur` | Claude'un yeni veri yeri (`Claude-Data`) bulunuyor; verisi taşınmış eski yer ve Claude'a ait olmayan paketler atlanıyor; eski düzen hâlâ duruyorsa o da bulunuyor |
+| `sessions::kok_klasorler_bulunur` | Bilinen bütün düzenler (Claude-Data, eski Store paketi, klasik kurulum, kurumsal sürüm) bulunuyor; verisi taşınmış eski yer, Claude'a ait olmayan paket ve klasörler atlanıyor |
+| `sessions::elle_secilen_klasor_cozulur` | Elle seçilen klasör (kök, onu içeren klasör ya da içindeki hesap/org klasörü) aynı köke çözülüyor; kayıt olmayan klasör reddediliyor |
 | `sessions::worktree_reposuna_baglanir` | Worktree yolu (alt klasörü ve harf büyüklüğü ne olursa olsun) reponun köküne indiriliyor |
 | `sessions::duz_klasor_normallesir` | Sondaki ayırıcı atılıyor, `/` ters bölüye çevriliyor; Türkçe karakterli yollar korunuyor |
 | `sessions::kimlik_dogrulama` | `claude://` bağlantısına yalnızca biçimi doğru bir oturum kimliği giriyor |

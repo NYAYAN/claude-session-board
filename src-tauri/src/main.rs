@@ -11,12 +11,32 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, LogicalSize, Manager, RunEvent, State, WebviewWindow};
 
 /// Claude'un oturum kayıtlarını okur (salt-okuma). Yüzlerce dosya okunduğu için
-/// ana iş parçacığını bloklamamak adına ayrı iş parçacığında çalışır.
+/// ana iş parçacığını bloklamamak adına ayrı iş parçacığında çalışır. `sessions_dir` kullanıcının
+/// elle seçtiği klasör; boşsa kayıtların yeri kendiliğinden aranır.
 #[tauri::command]
-async fn list_sessions() -> Result<sessions::SessionList, String> {
-    tauri::async_runtime::spawn_blocking(sessions::list)
+async fn list_sessions(sessions_dir: Option<String>) -> Result<sessions::SessionList, String> {
+    tauri::async_runtime::spawn_blocking(move || sessions::list(sessions_dir.as_deref()))
         .await
         .map_err(|e| e.to_string())?
+}
+
+/// Claude'un oturum klasörünü elle seçtirir; vazgeçilirse `None`. Pencere kapanana kadar bekleyen
+/// bir çağrı olduğu için ana iş parçacığında değil.
+#[tauri::command]
+async fn pick_sessions_dir(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut dialog = app.dialog().file().set_title("Claude oturum klasörünü seç");
+        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+            dialog = dialog.set_directory(local);
+        }
+        dialog
+            .blocking_pick_folder()
+            .map(|p| p.into_path().map(|p| p.display().to_string()).map_err(|e| e.to_string()))
+            .transpose()
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Oturumu Claude'da açar: `claude://claude.ai/epitaxy/<id>` bağlantısı Windows'ta kayıtlı
@@ -134,10 +154,12 @@ fn main() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .manage(pty::Ptys::default())
         .manage(updater::Pending::default())
         .invoke_handler(tauri::generate_handler![
             list_sessions,
+            pick_sessions_dir,
             open_session,
             load_state,
             save_state,

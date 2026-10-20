@@ -284,6 +284,7 @@ header {
 
 .empty { padding: 48px 20px; color: var(--muted); text-align: center; }
 .empty small { display: block; margin-top: 6px; color: var(--faint); word-break: break-all; }
+.empty .btn { margin: 14px 4px 0; }
 
 .tip {
   margin: 2px 4px 8px;

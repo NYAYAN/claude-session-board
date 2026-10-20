@@ -66,8 +66,10 @@ pub struct SessionList {
     pub skipped: usize,
 }
 
-/// Oturum kayıtlarının olası kök klasörleri (var olanlar). Claude sürümüne ve kurulum türüne göre
-/// kayıtlar üç yerden birindedir; hepsi denenir:
+const SESSIONS_DIR: &str = "claude-code-sessions";
+
+/// Oturum kayıtlarının olası kök klasörleri (var olanlar). Yeri Claude'un sürümüne, kurulum türüne
+/// (Store/MSIX, klasik, kurumsal) ve bilgisayara göre değişiyor; bilinen düzenler:
 ///
 /// - `%LOCALAPPDATA%\Claude-Data\<paket>\claude-code-sessions`: Claude Ekim 2026 güncellemesiyle
 ///   Store/MSIX kurulumunun verisini sanallaştırılmış AppData'dan buraya taşıdı. Eski yerlerde
@@ -78,7 +80,12 @@ pub struct SessionList {
 ///   terminal) görünür.
 /// - `%APPDATA%\Claude\claude-code-sessions`: klasik kurulum.
 ///
-/// Birden çoğu varsa `list` tek bir hesap (en son etkinliğin olduğu) seçtiği için çift sayılmaz.
+/// Bunları tek tek yazmak yerine aranır: `%LOCALAPPDATA%` ve `%APPDATA%`'da adında "claude" ya da
+/// "anthropic" geçen her klasörün kendisi ve bir alt seviyesi, Store paketlerinde de
+/// `LocalCache\{Roaming,Local}\*`. Böylece kurumsal sürüm (`Claude-3p`) ya da Claude'un ileride
+/// yapacağı benzer bir taşıma da bulunur. Hiçbiri tutmazsa kullanıcı klasörü elle seçer (`list`'in
+/// `custom` argümanı). Birden çok kök varsa `list` tek bir hesap (en son etkinliğin olduğu) seçtiği
+/// için çift sayılmaz.
 fn session_roots() -> Vec<PathBuf> {
     let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
     let appdata = std::env::var_os("APPDATA").map(PathBuf::from);
@@ -87,37 +94,69 @@ fn session_roots() -> Vec<PathBuf> {
 
 fn roots_in(local: Option<&Path>, appdata: Option<&Path>) -> Vec<PathBuf> {
     let mut roots = Vec::new();
-    if let Some(local) = local {
-        for data in sub_dirs(&local.join("Claude-Data")) {
-            roots.push(data.join("claude-code-sessions"));
+    for base in [local, appdata].into_iter().flatten() {
+        for dir in sub_dirs(base).into_iter().filter(|d| is_claude_named(d)) {
+            roots.push(dir.join(SESSIONS_DIR));
+            roots.extend(sub_dirs(&dir).into_iter().map(|d| d.join(SESSIONS_DIR)));
         }
-        for pkg in sub_dirs(&local.join("Packages")) {
-            let is_claude = pkg
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.starts_with("Claude_"));
-            if is_claude {
-                roots.push(
-                    pkg.join("LocalCache")
-                        .join("Roaming")
-                        .join("Claude")
-                        .join("claude-code-sessions"),
-                );
+    }
+    if let Some(local) = local {
+        for pkg in sub_dirs(&local.join("Packages")).into_iter().filter(|d| is_claude_named(d)) {
+            for cache in ["Roaming", "Local"] {
+                let dirs = sub_dirs(&pkg.join("LocalCache").join(cache));
+                roots.extend(dirs.into_iter().map(|d| d.join(SESSIONS_DIR)));
             }
         }
     }
-    if let Some(appdata) = appdata {
-        roots.push(appdata.join("Claude").join("claude-code-sessions"));
-    }
     roots.retain(|r| r.is_dir());
+    roots.sort();
+    roots.dedup();
     roots
 }
 
-pub fn list() -> Result<SessionList, String> {
-    let roots = session_roots();
+fn is_claude_named(dir: &Path) -> bool {
+    dir.file_name()
+        .and_then(|n| n.to_str())
+        .map(str::to_ascii_lowercase)
+        .is_some_and(|n| n.contains("claude") || n.contains("anthropic"))
+}
+
+/// Elle seçilen klasörü kayıt köküne çevirir. Kullanıcı `claude-code-sessions`'ı, onu içeren
+/// klasörü ya da içindeki bir hesap/org klasörünü seçmiş olabilir; içinde gerçekten oturum kaydı
+/// olan ilk aday kök sayılır.
+fn resolve_custom(dir: &Path) -> Option<PathBuf> {
+    let parent = dir.parent();
+    let candidates = [
+        Some(dir.join(SESSIONS_DIR)),
+        Some(dir.to_path_buf()),
+        parent.map(Path::to_path_buf),
+        parent.and_then(Path::parent).map(Path::to_path_buf),
+    ];
+    candidates.into_iter().flatten().find(|c| has_sessions(c))
+}
+
+/// Kökün altında `<hesap>\<org>\local_*.json` düzeninde en az bir kayıt var mı.
+fn has_sessions(root: &Path) -> bool {
+    sub_dirs(root).iter().flat_map(|a| sub_dirs(a)).any(|org| {
+        fs::read_dir(&org)
+            .map(|entries| entries.flatten().any(|e| is_session_file(&e.path())))
+            .unwrap_or(false)
+    })
+}
+
+/// Oturumları okur. `custom` doluysa yalnız o klasöre bakılır (kullanıcının seçtiği yer);
+/// boşsa kök kendiliğinden aranır (bkz. `session_roots`).
+pub fn list(custom: Option<&str>) -> Result<SessionList, String> {
+    let custom = custom.map(str::trim).filter(|c| !c.is_empty());
+    let roots = match custom {
+        Some(dir) => vec![resolve_custom(Path::new(dir)).ok_or_else(|| {
+            format!("Seçilen klasörde Claude oturum kaydı yok: {dir}. ⋯ → Otomatik bul ile geri dönebilirsin.")
+        })?],
+        None => session_roots(),
+    };
     if roots.is_empty() {
         return Err(
-            "Claude oturum klasörü bulunamadı (%LOCALAPPDATA%\\Claude-Data, %LOCALAPPDATA%\\Packages\\Claude_* ve %APPDATA%\\Claude denendi)"
+            "Claude oturum kayıtları bulunamadı (%LOCALAPPDATA% ve %APPDATA% altındaki Claude klasörleri tarandı). ⋯ → Oturum klasörünü seç ile yerini gösterebilirsin."
                 .into(),
         );
     }
@@ -297,39 +336,72 @@ mod tests {
         );
     }
 
-    /// Claude'un verisini taşıdığı yeni yer bulunur; taşınmış (yalnız işaret dosyası kalmış) eski
-    /// yer ve Claude'a ait olmayan paketler atlanır. Eski düzen hâlâ duruyorsa o da bulunur.
+    fn temp_base(name: &str) -> PathBuf {
+        let base = std::env::temp_dir().join(format!("sessionboard-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        base
+    }
+
+    fn sorted(mut v: Vec<PathBuf>) -> Vec<PathBuf> {
+        v.sort();
+        v
+    }
+
+    /// Bilinen bütün düzenler bulunur: Claude-Data (Ekim 2026 sonrası Store), eski Store paketi,
+    /// klasik kurulum ve adında Claude geçen başka bir klasör (kurumsal sürüm). Verisi taşınmış
+    /// (yalnız işaret dosyası kalmış) eski yer, Claude'a ait olmayan paketler ve klasörler atlanır.
     #[test]
     fn kok_klasorler_bulunur() {
-        let base = std::env::temp_dir().join(format!("sessionboard-roots-{}", std::process::id()));
+        let base = temp_base("roots");
         let local = base.join("Local");
         let roaming = base.join("Roaming");
-        let new_root = local.join("Claude-Data").join("claude_abc123").join("claude-code-sessions");
+        let data = local.join("Claude-Data").join("claude_abc123").join(SESSIONS_DIR);
+        let enterprise = local.join("Claude-3p").join(SESSIONS_DIR);
         let old_pkg = local.join("Packages").join("Claude_abc123").join("LocalCache").join("Roaming").join("Claude");
         let other_pkg = local.join("Packages").join("Other_xyz").join("LocalCache").join("Roaming").join("Claude");
-        fs::create_dir_all(&new_root).unwrap();
+        let unrelated = local.join("SomeTool").join(SESSIONS_DIR);
+        for d in [&data, &enterprise, &other_pkg.join(SESSIONS_DIR), &unrelated] {
+            fs::create_dir_all(d).unwrap();
+        }
         fs::create_dir_all(&old_pkg).unwrap();
         fs::write(old_pkg.join(".user-data-left.claude_abc123"), b"").unwrap();
-        fs::create_dir_all(other_pkg.join("claude-code-sessions")).unwrap();
         fs::create_dir_all(roaming.join("Claude")).unwrap();
         let after_move = roots_in(Some(&local), Some(&roaming));
 
-        fs::create_dir_all(old_pkg.join("claude-code-sessions")).unwrap();
-        fs::create_dir_all(roaming.join("Claude").join("claude-code-sessions")).unwrap();
+        let old_root = old_pkg.join(SESSIONS_DIR);
+        let classic = roaming.join("Claude").join(SESSIONS_DIR);
+        fs::create_dir_all(&old_root).unwrap();
+        fs::create_dir_all(&classic).unwrap();
         let all = roots_in(Some(&local), Some(&roaming));
         let none = roots_in(None, None);
         let _ = fs::remove_dir_all(&base);
 
-        assert_eq!(after_move, vec![new_root.clone()]);
-        assert_eq!(
-            all,
-            vec![
-                new_root,
-                old_pkg.join("claude-code-sessions"),
-                roaming.join("Claude").join("claude-code-sessions"),
-            ]
-        );
+        assert_eq!(after_move, sorted(vec![data.clone(), enterprise.clone()]));
+        assert_eq!(all, sorted(vec![data, enterprise, old_root, classic]));
         assert!(none.is_empty());
+    }
+
+    /// Elle seçilen klasör: kök, onu içeren klasör ya da içindeki hesap/org klasörü seçilmiş olsa
+    /// da aynı köke çözülür; içinde kayıt olmayan klasör reddedilir.
+    #[test]
+    fn elle_secilen_klasor_cozulur() {
+        let base = temp_base("custom");
+        let parent = base.join("Claude-Data").join("claude_abc123");
+        let root = parent.join(SESSIONS_DIR);
+        let org = root.join("hesap").join("org");
+        fs::create_dir_all(&org).unwrap();
+        fs::write(org.join("local_3f2a9c4e.json"), b"{}").unwrap();
+        let empty = base.join("Bos");
+        fs::create_dir_all(empty.join(SESSIONS_DIR)).unwrap();
+
+        let picks = [&parent, &root, &root.join("hesap"), &org].map(|p| resolve_custom(p));
+        let rejected = resolve_custom(&empty);
+        let _ = fs::remove_dir_all(&base);
+
+        for got in picks {
+            assert_eq!(got.as_ref(), Some(&root));
+        }
+        assert_eq!(rejected, None);
     }
 
     #[test]
@@ -343,7 +415,7 @@ mod tests {
     #[test]
     #[ignore]
     fn gercek_kayitlar_okunur() {
-        let list = list().expect("kayıtlar okunamadı");
+        let list = list(None).expect("kayıtlar okunamadı");
         let mut workspaces: Vec<&str> = list.sessions.iter().map(|s| s.workspace.as_str()).collect();
         workspaces.sort();
         workspaces.dedup();

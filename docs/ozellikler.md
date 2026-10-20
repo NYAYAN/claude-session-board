@@ -170,11 +170,34 @@ hatayı yazar. v0.1.0'da güncelleyici yoktur; ondan bir kez elle geçmek gereki
 
 | Konu | Ayrıntı |
 |---|---|
-| Oturum listesi | `<kök>\<hesap>\<org>\local_*.json`, **yalnızca okunur**. Kök, Claude'un sürümüne ve kurulum türüne göre şunlardan biri: `%LOCALAPPDATA%\Claude-Data\<paket>\claude-code-sessions` (Ekim 2026'dan beri Store/MSIX kurulumu; Claude verisini buraya taşıdı ve eski yerde yalnızca `.user-data-left.*` işaret dosyası bıraktı), `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code-sessions` (daha eski Store/MSIX kurulumu; AppData'sı sanallaştırıldığı için kayıtlar fiziksel olarak burada) ya da klasik kurulumda `%APPDATA%\Claude\claude-code-sessions`. Üçü de denenir |
+| Oturum listesi | `<kök>\<hesap>\<org>\local_*.json`, **yalnızca okunur**. Kökün yeri Claude'un sürümüne ve kurulum türüne göre değişiyor; SessionBoard onu kendisi arar (bkz. [Kayıtların yeri](#kayıtların-yeri)) |
 | Hesap | Birden çok hesap klasörü varsa en son etkinliğin olduğu hesap gösterilir: Claude'un hangi hesapla açık olduğu dosyalardan bilinemiyor |
 | Klasör | Kaydın `originCwd` alanı; worktree oturumları reponun köküne bağlanır |
 | Son etkinlik | Masaüstü kaydı ile konuşma dosyasının (`~\.claude\projects\…\<cliSessionId>.jsonl`) değiştirilme zamanının büyüğü. Oturum terminalde sürdürülünce masaüstünün kaydı güncellenmez, konuşma dosyası güncellenir |
 | Oturumu açma | `claude://claude.ai/epitaxy/<oturum-id>` → Windows'ta kayıtlı Claude protokol işleyicisi |
+
+### Kayıtların yeri
+
+Claude oturum kayıtlarını (`claude-code-sessions` klasörü) her bilgisayarda aynı yerde tutmuyor. Bilinen
+düzenler:
+
+| Kurulum | Klasör |
+|---|---|
+| Store (MSIX), Ekim 2026'dan sonra | `%LOCALAPPDATA%\Claude-Data\<paket>\claude-code-sessions`; Claude verisini buraya taşıdı ve eski yerde yalnızca `.user-data-left.*` işaret dosyası bıraktı |
+| Store (MSIX), daha eski | `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code-sessions` (AppData'sı sanallaştırıldığı için kayıtlar fiziksel olarak burada) |
+| Klasik kurulum | `%APPDATA%\Claude\claude-code-sessions` |
+
+SessionBoard bunları tek tek beklemek yerine **arar**: `%LOCALAPPDATA%` ve `%APPDATA%` altında adında
+"claude" ya da "anthropic" geçen her klasörde ve onun bir alt seviyesinde, Store paketlerinde de
+`LocalCache` altında `claude-code-sessions` klasörüne bakar. Böylece kurumsal sürüm gibi farklı adlı
+kurulumlar ya da Claude'un ileride yapacağı benzer bir taşıma da kendiliğinden bulunur. Birden çok yer
+bulunursa en son etkinliğin olduğu kullanılır. Okunan klasör alt çubuğun sağ tarafının üzerine gelince ve
+*⋯ › Oturum klasörünü seç…* satırının ipucunda görünür.
+
+**Elle seçmek.** Kayıtlar yine de bulunamazsa liste yerine "Claude oturum kayıtları okunamadı" ve
+**Oturum klasörünü seç…** düğmesi çıkar (aynı seçenek ⋯ menüsünde de var). Açılan pencerede
+`claude-code-sessions` klasörünü ya da onu içeren klasörü seçmek yeter; içinde kayıt olmayan bir klasör
+kabul edilmez. Seçim o bilgisayarın `state.json`'ında kalır, *⋯ › Otomatik bul* aramaya geri döndürür.
 
 > Claude'un oturum kayıtları **belgelenmemiş bir iç biçimdir**. Bir Claude güncellemesi biçimi
 > değiştirirse liste boş ya da eksik gelebilir; okunamayan kayıtlar alt çubukta "N kayıt okunamadı"

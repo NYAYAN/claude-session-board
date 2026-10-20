@@ -28,6 +28,7 @@
 
   let query = '';
   let loading = false;
+  let refreshAgain = false;
   let loadedOnce = false;
   let lastLoadedAt = null;
   let errorText = '';
@@ -111,6 +112,8 @@
         tipDismissed: false,
         terminalWarned: false,
         sideWidth: 0,
+        // Claude'un oturum klasörü elle seçildiyse yolu; boşsa kendiliğinden aranır (sessions.rs).
+        sessionsDir: '',
         ...(isObj(s.prefs) ? s.prefs : {}),
       },
     };
@@ -481,6 +484,20 @@
     const box = el('div', 'empty');
     if (searching) {
       box.textContent = `“${query.trim()}” için sonuç yok.`;
+    } else if (errorText.startsWith('Oturumlar okunamadı')) {
+      // Kayıtların yeri kuruluma göre değişiyor; bulunamadıysa kullanıcı burada gösterebilsin.
+      box.textContent = 'Claude oturum kayıtları okunamadı.';
+      box.append(span('', errorText.replace(/^Oturumlar okunamadı: /, ''), 'small'));
+      const pick = el('button', 'btn btn-primary');
+      pick.textContent = 'Oturum klasörünü seç…';
+      pick.addEventListener('click', () => chooseSessionsDir());
+      box.append(pick);
+      if (state.prefs.sessionsDir) {
+        const auto = el('button', 'btn');
+        auto.textContent = 'Otomatik bul';
+        auto.addEventListener('click', () => useAutoSessionsDir());
+        box.append(auto);
+      }
     } else if (state.prefs.favoritesOnly) {
       box.textContent = 'Henüz favori klasör yok.';
       box.append(span('', 'Klasör satırındaki ☆ ile ekle ya da üstteki yıldızla tüm klasörlere dön.', 'small'));
@@ -604,11 +621,16 @@
   // ---------------------------------------------------------------- veri
 
   async function refresh() {
-    if (loading) return;
+    if (loading) {
+      // Sürmekte olan okuma eski ayarla başlamış olabilir (ör. klasör yeni seçildi): bitince yeniden.
+      refreshAgain = true;
+      return;
+    }
     loading = true;
+    refreshAgain = false;
     refreshBtn.classList.add('spin');
     try {
-      const res = await invoke('list_sessions');
+      const res = await invoke('list_sessions', { sessionsDir: state.prefs.sessionsDir || null });
       const next = res.sessions || [];
       source = res.source || '';
       skipped = res.skipped || 0;
@@ -633,7 +655,46 @@
     } finally {
       loading = false;
       refreshBtn.classList.remove('spin');
+      if (refreshAgain) refresh();
     }
+  }
+
+  /**
+   * Claude'un oturum klasörünü elle seçtirir. Yeri kuruluma göre değiştiği için önce kendiliğinden
+   * aranır; bulunamazsa ya da yanlış yer bulunursa kullanıcı gösterir. Seçim bu bilgisayarın
+   * state.json'ında kalır.
+   */
+  async function chooseSessionsDir() {
+    let dir;
+    try {
+      dir = await invoke('pick_sessions_dir');
+    } catch (err) {
+      setError('Klasör seçilemedi: ' + err);
+      return;
+    }
+    if (!dir) return;
+    state.prefs.sessionsDir = dir;
+    await switchSource();
+    if (!errorText) flash('Oturum klasörü seçildi');
+  }
+
+  function useAutoSessionsDir() {
+    state.prefs.sessionsDir = '';
+    switchSource();
+  }
+
+  /**
+   * Kaynak değişti: eski kaynağın listesi bırakılır. Okuma hatasında liste normalde korunur (geçici
+   * bir hata ağacı boşaltmasın), ama yeni kaynak okunamazsa eskisini göstermek yanıltıcı olurdu.
+   */
+  async function switchSource() {
+    scheduleSave();
+    sessions = [];
+    byId = new Map();
+    sessionsSig = '';
+    selected.clear();
+    render();
+    await refresh();
   }
 
   /**
@@ -1242,6 +1303,10 @@
       { label: 'Tümünü daralt', action: () => setAllCollapsed(true) },
       { label: 'Tümünü genişlet', action: () => setAllCollapsed(false) },
       ...(state.prefs.tipDismissed ? [{ label: 'İpucunu yeniden göster', action: () => { state.prefs.tipDismissed = false; commit(); } }] : []),
+      { sep: true },
+      { header: state.prefs.sessionsDir ? 'Oturum kayıtları: elle seçildi' : 'Oturum kayıtları: otomatik' },
+      { label: 'Oturum klasörünü seç…', title: source ? 'Şu an okunan: ' + source : '', action: () => chooseSessionsDir() },
+      ...(state.prefs.sessionsDir ? [{ label: 'Otomatik bul', action: () => useAutoSessionsDir() }] : []),
       { sep: true },
       { header: appVersion ? `SessionBoard v${appVersion}` : 'SessionBoard' },
       { label: 'Güncellemeleri denetle', disabled: checkingUpdate || updating, action: () => checkUpdate(true) },
