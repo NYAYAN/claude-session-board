@@ -186,7 +186,7 @@ Konum `%USERPROFILE%\.sessionboard\`:
 
 | Dosya | İçerik |
 |---|---|
-| `state.json` | Klasörlerin adları, favori/gizli/daraltma durumları, gruplar, grup başına elle sıra, oturum → grup atamaları, klasör sırası, birleştirmeler ve tercihler |
+| `state.json` | Klasörlerin adları, favori/gizli/daraltma durumları, gruplar ve alt grupları (`parent`), grup başına elle sıra, oturum → grup atamaları, klasör sırası, birleştirmeler ve tercihler |
 | `state.json.bak` | Bir önceki kayıt; `state.json` bozulursa geri dönmek için |
 
 Yazma her zaman "geçici dosyaya yaz → eskisini `.bak`'a kopyala → yerine taşı" biçiminde: yarım yazılmış bir

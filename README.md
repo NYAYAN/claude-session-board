@@ -28,7 +28,8 @@ Windows için · Claude masaüstü uygulamasının yanında çalışır · Ücre
 
 Claude'un kenar çubuğu oturumları aynı anda yalnız tek ölçüte göre gruplayabiliyor: ya klasöre ya özel
 gruplara. SessionBoard ikisini birlikte gösterir. Oturumlar açıldıkları klasörün altında toplanır, her
-klasörün içinde kendi gruplarınız durur; worktree'de açılan oturumlar reponun kendi klasörüne bağlanır.
+klasörün içinde kendi gruplarınız ve gerekirse onların alt grupları durur; worktree'de açılan oturumlar
+reponun kendi klasörüne bağlanır.
 Sık kullandığınız klasörleri yıldızla işaretleyip tek tıkla süzebilir, işiniz bitenleri gizleyebilirsiniz.
 
 ### Sürükleyerek düzenleyin
