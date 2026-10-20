@@ -66,17 +66,32 @@ pub struct SessionList {
     pub skipped: usize,
 }
 
-/// Oturum kayıtlarının olası kök klasörleri (var olanlar).
+/// Oturum kayıtlarının olası kök klasörleri (var olanlar). Claude sürümüne ve kurulum türüne göre
+/// kayıtlar üç yerden birindedir; hepsi denenir:
 ///
-/// Claude Store/MSIX paketi olarak kuruluysa AppData'sı sanallaştırılır: kayıtlar fiziksel olarak
-/// `%LOCALAPPDATA%\Packages\Claude_<yayıncı>\LocalCache\Roaming\Claude\claude-code-sessions`
-/// altındadır; `%APPDATA%\Claude\...` yolu yalnız paketin İÇİNDEN (ör. Claude'un açtığı terminal)
-/// görünür, dışarıdan açılan SessionBoard orada hiçbir şey bulamaz. Klasik kurulumda ise kayıtlar
-/// doğrudan `%APPDATA%\Claude\...`'dadır. İkisi de denenir.
+/// - `%LOCALAPPDATA%\Claude-Data\<paket>\claude-code-sessions`: Claude Ekim 2026 güncellemesiyle
+///   Store/MSIX kurulumunun verisini sanallaştırılmış AppData'dan buraya taşıdı. Eski yerlerde
+///   yalnız boş bir `.user-data-left.<paket>` işaret dosyası kalır.
+/// - `%LOCALAPPDATA%\Packages\Claude_<yayıncı>\LocalCache\Roaming\Claude\claude-code-sessions`:
+///   o güncellemeden önceki Store/MSIX kurulumu. AppData'sı sanallaştırıldığı için kayıtlar fiziksel
+///   olarak buradadır; `%APPDATA%\Claude\...` yolu yalnız paketin İÇİNDEN (ör. Claude'un açtığı
+///   terminal) görünür.
+/// - `%APPDATA%\Claude\claude-code-sessions`: klasik kurulum.
+///
+/// Birden çoğu varsa `list` tek bir hesap (en son etkinliğin olduğu) seçtiği için çift sayılmaz.
 fn session_roots() -> Vec<PathBuf> {
+    let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+    let appdata = std::env::var_os("APPDATA").map(PathBuf::from);
+    roots_in(local.as_deref(), appdata.as_deref())
+}
+
+fn roots_in(local: Option<&Path>, appdata: Option<&Path>) -> Vec<PathBuf> {
     let mut roots = Vec::new();
-    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-        for pkg in sub_dirs(&PathBuf::from(local).join("Packages")) {
+    if let Some(local) = local {
+        for data in sub_dirs(&local.join("Claude-Data")) {
+            roots.push(data.join("claude-code-sessions"));
+        }
+        for pkg in sub_dirs(&local.join("Packages")) {
             let is_claude = pkg
                 .file_name()
                 .and_then(|n| n.to_str())
@@ -91,8 +106,8 @@ fn session_roots() -> Vec<PathBuf> {
             }
         }
     }
-    if let Some(appdata) = std::env::var_os("APPDATA") {
-        roots.push(PathBuf::from(appdata).join("Claude").join("claude-code-sessions"));
+    if let Some(appdata) = appdata {
+        roots.push(appdata.join("Claude").join("claude-code-sessions"));
     }
     roots.retain(|r| r.is_dir());
     roots
@@ -102,7 +117,7 @@ pub fn list() -> Result<SessionList, String> {
     let roots = session_roots();
     if roots.is_empty() {
         return Err(
-            "Claude oturum klasörü bulunamadı (%LOCALAPPDATA%\\Packages\\Claude_*\\LocalCache\\Roaming\\Claude ve %APPDATA%\\Claude denendi)"
+            "Claude oturum klasörü bulunamadı (%LOCALAPPDATA%\\Claude-Data, %LOCALAPPDATA%\\Packages\\Claude_* ve %APPDATA%\\Claude denendi)"
                 .into(),
         );
     }
@@ -280,6 +295,41 @@ mod tests {
             workspace_root(r"C:\Work\App\.Claude\Worktrees\x\sub"),
             r"C:\Work\App"
         );
+    }
+
+    /// Claude'un verisini taşıdığı yeni yer bulunur; taşınmış (yalnız işaret dosyası kalmış) eski
+    /// yer ve Claude'a ait olmayan paketler atlanır. Eski düzen hâlâ duruyorsa o da bulunur.
+    #[test]
+    fn kok_klasorler_bulunur() {
+        let base = std::env::temp_dir().join(format!("sessionboard-roots-{}", std::process::id()));
+        let local = base.join("Local");
+        let roaming = base.join("Roaming");
+        let new_root = local.join("Claude-Data").join("claude_abc123").join("claude-code-sessions");
+        let old_pkg = local.join("Packages").join("Claude_abc123").join("LocalCache").join("Roaming").join("Claude");
+        let other_pkg = local.join("Packages").join("Other_xyz").join("LocalCache").join("Roaming").join("Claude");
+        fs::create_dir_all(&new_root).unwrap();
+        fs::create_dir_all(&old_pkg).unwrap();
+        fs::write(old_pkg.join(".user-data-left.claude_abc123"), b"").unwrap();
+        fs::create_dir_all(other_pkg.join("claude-code-sessions")).unwrap();
+        fs::create_dir_all(roaming.join("Claude")).unwrap();
+        let after_move = roots_in(Some(&local), Some(&roaming));
+
+        fs::create_dir_all(old_pkg.join("claude-code-sessions")).unwrap();
+        fs::create_dir_all(roaming.join("Claude").join("claude-code-sessions")).unwrap();
+        let all = roots_in(Some(&local), Some(&roaming));
+        let none = roots_in(None, None);
+        let _ = fs::remove_dir_all(&base);
+
+        assert_eq!(after_move, vec![new_root.clone()]);
+        assert_eq!(
+            all,
+            vec![
+                new_root,
+                old_pkg.join("claude-code-sessions"),
+                roaming.join("Claude").join("claude-code-sessions"),
+            ]
+        );
+        assert!(none.is_empty());
     }
 
     #[test]

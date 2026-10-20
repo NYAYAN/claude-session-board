@@ -168,6 +168,7 @@ Rust birim testleri:
 | `pty::conpty_ciktiyi_okur_ve_kapanir` | Gerçek bir ConPTY süreci açılıyor, çıktısı okunuyor, kapanıyor (imleç sorusu yanıtlanarak) |
 | `pty::yarim_utf8_sonraki_okumaya_kalir` | Bölünmüş çok baytlı karakter bozulmadan birleşiyor |
 | `pty::uuid_dogrulama` | `--resume`'a yalnızca biçimi doğru bir konuşma kimliği gidiyor; komut satırına sızabilecek karakterler reddediliyor |
+| `sessions::kok_klasorler_bulunur` | Claude'un yeni veri yeri (`Claude-Data`) bulunuyor; verisi taşınmış eski yer ve Claude'a ait olmayan paketler atlanıyor; eski düzen hâlâ duruyorsa o da bulunuyor |
 | `sessions::worktree_reposuna_baglanir` | Worktree yolu (alt klasörü ve harf büyüklüğü ne olursa olsun) reponun köküne indiriliyor |
 | `sessions::duz_klasor_normallesir` | Sondaki ayırıcı atılıyor, `/` ters bölüye çevriliyor; Türkçe karakterli yollar korunuyor |
 | `sessions::kimlik_dogrulama` | `claude://` bağlantısına yalnızca biçimi doğru bir oturum kimliği giriyor |

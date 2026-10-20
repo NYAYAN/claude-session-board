@@ -170,7 +170,7 @@ hatayı yazar. v0.1.0'da güncelleyici yoktur; ondan bir kez elle geçmek gereki
 
 | Konu | Ayrıntı |
 |---|---|
-| Oturum listesi | `<kök>\<hesap>\<org>\local_*.json`, **yalnızca okunur**. Kök: `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code-sessions` (Claude'un Store/MSIX paketi; AppData'sı sanallaştırıldığı için kayıtlar fiziksel olarak burada) ya da klasik kurulumda `%APPDATA%\Claude\claude-code-sessions` |
+| Oturum listesi | `<kök>\<hesap>\<org>\local_*.json`, **yalnızca okunur**. Kök, Claude'un sürümüne ve kurulum türüne göre şunlardan biri: `%LOCALAPPDATA%\Claude-Data\<paket>\claude-code-sessions` (Ekim 2026'dan beri Store/MSIX kurulumu; Claude verisini buraya taşıdı ve eski yerde yalnızca `.user-data-left.*` işaret dosyası bıraktı), `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code-sessions` (daha eski Store/MSIX kurulumu; AppData'sı sanallaştırıldığı için kayıtlar fiziksel olarak burada) ya da klasik kurulumda `%APPDATA%\Claude\claude-code-sessions`. Üçü de denenir |
 | Hesap | Birden çok hesap klasörü varsa en son etkinliğin olduğu hesap gösterilir: Claude'un hangi hesapla açık olduğu dosyalardan bilinemiyor |
 | Klasör | Kaydın `originCwd` alanı; worktree oturumları reponun köküne bağlanır |
 | Son etkinlik | Masaüstü kaydı ile konuşma dosyasının (`~\.claude\projects\…\<cliSessionId>.jsonl`) değiştirilme zamanının büyüğü. Oturum terminalde sürdürülünce masaüstünün kaydı güncellenmez, konuşma dosyası güncellenir |
