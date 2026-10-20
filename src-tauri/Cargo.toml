@@ -1,6 +1,6 @@
 [package]
 name = "sessionboard"
-version = "0.2.2"
+version = "0.2.3"
 description = "Claude Code oturumlarını workspace → grup → oturum ağacında düzenler"
 authors = ["Nurullah YAYAN"]
 license = "ISC"
