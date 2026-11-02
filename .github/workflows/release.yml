@@ -1,8 +1,10 @@
-# `v*` etiketi push edilince Windows kurulum paketini (NSIS) derler ve GitHub sürümü olarak
+# `v*` etiketi push edilince Windows kurulum paketini (NSIS) ve macOS paketini (Apple Silicon +
+# Intel tek paket: .dmg ve güncelleyicinin .app.tar.gz'si) derler ve GitHub sürümü olarak
 # YAYINLAR (taslak değil). Sürüm çıkarmak: tauri.conf.json + Cargo.toml + package.json'daki
 # sürümü artır, commit'le, `git tag vX.Y.Z && git push origin vX.Y.Z`.
 #
 # Kurulu uygulamalar kendini bu sürümün `latest.json`'ından günceller (bkz. src-tauri/src/updater.rs).
+# İki iş aynı sürüme yükler; tauri-action `latest.json`'ı birleştirir, her sistem kendi paketini bulur.
 # Güncelleme paketi imzalı olmalı: depo sırları TAURI_SIGNING_PRIVATE_KEY ve
 # TAURI_SIGNING_PRIVATE_KEY_PASSWORD gerekir (README → Sürüm çıkarma).
 name: Build and Release
@@ -20,7 +22,18 @@ permissions:
 jobs:
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: ''
+            rust-targets: ''
+          # Tek paket iki işlemciye: tauri-action latest.json'a darwin-aarch64 ve darwin-x86_64 yazar.
+          - os: macos-latest
+            args: '--target universal-apple-darwin'
+            rust-targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -49,11 +62,13 @@ jobs:
           }
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
-          key: release
+          key: release-${{ matrix.os }}
 
       - uses: actions/setup-node@v4
         with:
@@ -78,12 +93,18 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'SessionBoard ${{ github.ref_name }}'
           includeUpdaterJson: true
+          args: ${{ matrix.args }}
           releaseBody: |
-            Windows için kurulum dosyası aşağıda: `SessionBoard_*_x64-setup.exe`.
-            Kurulu SessionBoard (v0.2.0 ve sonrası) bu sürümü kendisi bulur ve günceller.
+            Kurulu SessionBoard (Windows'ta v0.2.0 ve sonrası) bu sürümü kendisi bulur ve günceller.
 
+            **Windows:** `SessionBoard_*_x64-setup.exe`
             - Yönetici izni istemez; yalnız kullanıcı için kurulur.
             - Kod imzası yok: Windows SmartScreen uyarı verebilir → **Ek bilgi** → **Yine de çalıştır**.
-            - Gömülü terminal için bağımsız Claude Code CLI gerekir — bkz. README → [Terminal](https://github.com/${{ github.repository }}#terminal).
+
+            **macOS (Apple Silicon ve Intel):** `SessionBoard_*_universal.dmg`
+            - Açıp SessionBoard'u Uygulamalar klasörüne sürükleyin.
+            - Apple tarafından onaylı değil: ilk açılışta macOS uyarır → **Sistem Ayarları › Gizlilik ve Güvenlik › Yine de Aç**.
+
+            Gömülü terminal için bağımsız Claude Code CLI gerekir — bkz. README → [Paketi indirip kurmak](https://github.com/${{ github.repository }}#paketi-indirip-kurmak).
           releaseDraft: false
           prerelease: false

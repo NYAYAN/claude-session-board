@@ -13,6 +13,8 @@ Kaynaktan derleme, mimari, testler ve yayın süreci. Adım adım derleme için
 
 ## Gereksinimler
 
+**Windows**
+
 | | |
 |---|---|
 | Windows | 10 / 11 (ConPTY gerektirir) |
@@ -21,8 +23,18 @@ Kaynaktan derleme, mimari, testler ve yayın süreci. Adım adım derleme için
 | Rust | 1.82+ (`x86_64-pc-windows-msvc`) |
 | Visual Studio | 2022 ya da Build Tools, "C++ ile masaüstü geliştirme" bileşeni |
 
-Uygulama yalnızca Windows'ta çalışıyor: Claude masaüstü kayıtlarının yeri, ConPTY ve `claude://`
-protokol işleyicisi Windows'a özgü.
+**macOS**
+
+| | |
+|---|---|
+| macOS | 11+ (Apple Silicon ya da Intel) |
+| Xcode Command Line Tools | `xcode-select --install` |
+| Node.js | 20+ |
+| Rust | 1.82+ (`aarch64-apple-darwin` / `x86_64-apple-darwin`) |
+
+İki sistemde ayrı yazılan yerler: Claude kayıtlarının yeri ve yol biçimi (`sessions.rs`), sözde terminal
+ve CLI'nin bulunması (`pty.rs`), güncellemenin kurulması (`updater.rs`), kısayollar ve terminal yazı tipi
+(`app.js`, `terminal.js`), paket türü (`tauri.macos.conf.json`). Geri kalanı ortak.
 
 ## Kurulum ve çalıştırma
 
@@ -48,12 +60,14 @@ Testleri koş:
 npm run test:rust
 ```
 
-Çıktı `src-tauri\target\release\bundle\nsis\SessionBoard_<sürüm>_x64-setup.exe` ve yanında güncelleyicinin
-okuduğu imza dosyası `.sig`.
+Çıktı Windows'ta `src-tauri\target\release\bundle\nsis\SessionBoard_<sürüm>_x64-setup.exe` ve yanında
+güncelleyicinin okuduğu imza dosyası `.sig`; macOS'ta `src-tauri/target/release/bundle/macos/SessionBoard.app`,
+`dmg/SessionBoard_<sürüm>_aarch64.dmg` ve güncelleyicinin `SessionBoard.app.tar.gz` + `.sig`'i.
 
 **Geliştirme sürümü gerçek veriyi kullanır.** `npm run dev` ile açılan uygulama da
-`%USERPROFILE%\.sessionboard\state.json`'ı okur ve yazar. Kurulu SessionBoard açıksa önce onu kapatın:
-tek pencere kuralı yüzünden yeni süreç açılmaz, kurulu olanın penceresi öne gelir.
+`%USERPROFILE%\.sessionboard\state.json`'ı (macOS'ta `~/.sessionboard/state.json`) okur ve yazar. Kurulu
+SessionBoard açıksa önce onu kapatın: tek pencere kuralı yüzünden yeni süreç açılmaz, kurulu olanın
+penceresi öne gelir.
 
 **`npm run build` imza anahtarı ister.** Güncelleme paketi derlemede imzalanıyor; anahtar yoksa paketleme
 sonunda "A public key has been found, but no private key" hatasıyla düşer. `npm run dev` istemez.
@@ -62,6 +76,14 @@ sonunda "A public key has been found, but no private key" hatasıyla düşer. `n
 $env:TAURI_SIGNING_PRIVATE_KEY = (Get-Content "$env:USERPROFILE\.tauri\sessionboard.key" -Raw).Trim()
 $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = (Get-Content "$env:USERPROFILE\.tauri\sessionboard.key.password" -Raw).Trim()
 ```
+
+```bash
+export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/sessionboard.key)"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(cat ~/.tauri/sessionboard.key.password)"
+```
+
+Anahtar o bilgisayarda yoksa ve paket yalnızca orada kullanılacaksa güncelleme paketini kapatıp derleyin:
+`npm run tauri build -- --config '{"bundle":{"createUpdaterArtifacts":false}}'`.
 
 ### `LNK1104: cannot open file 'msvcrt.lib'`
 
@@ -86,10 +108,11 @@ src-tauri/
   src/main.rs                 komutlar, eklentiler, pencere
   src/sessions.rs             Claude oturum kayıtlarını okur (yalnızca okuma)
   src/store.rs                state.json okuma/yazma (+ .bak)
-  src/pty.rs                  ConPTY sözde terminal, Claude CLI'yi bulma
+  src/pty.rs                  sözde terminal (ConPTY / Unix PTY), Claude CLI'yi bulma
   src/updater.rs              güncelleme denetimi ve kurulumu
   capabilities/default.json   pencere izinleri (yalnızca çekirdek)
   tauri.conf.json             pencere, CSP, paketleme, güncelleyici açık anahtarı
+  tauri.macos.conf.json       macOS'ta üstüne eklenir: .app + .dmg, en düşük sürüm, ad-hoc imza
 scripts/vendor.mjs          xterm dosyalarını src/vendor'a kopyalar
 .github/workflows/          check.yml (her push), release.yml (v* etiketi)
 docs/                       belgeler ve README görüntüleri
@@ -155,11 +178,39 @@ penceresi `tauri-plugin-dialog` ile Rust tarafında açılıyor (arayüze ek izi
 **Hesap seçimi.** Kayıtlar hesap klasörlerine ayrılıyor ama Claude'un hangi hesapla açık olduğu dosyalardan
 okunamıyor. En son etkinliğin olduğu hesap gösteriliyor.
 
+**macOS: aynı arama, başka kök.** Kayıtlar `~/Library/Application Support/Claude/claude-code-sessions`
+altında ve düzen Windows'takiyle aynı; `roots_in` Application Support'u `%APPDATA%` gibi tarıyor. Yollar
+`/` ile kalıyor: Windows'taki `/` → `\` çevirisi macOS'ta bütün yolları bozardı, `\` ise orada geçerli
+bir dosya adı karakteri. Anahtar yine küçük harfe indiriliyor; APFS varsayılan olarak harf büyüklüğüne
+duyarsız.
+
+**macOS: PATH kabuktan.** Dock'tan açılan uygulama launchd'nin PATH'ini alıyor
+(`/usr/bin:/bin:/usr/sbin:/sbin`); Homebrew, nvm ve `~/.local/bin` yok. Hem `claude`'un kendisi hem onun
+çalıştırdığı `git`/`node` bulunamazdı. PATH açılışta arka planda bir kez `$SHELL -i -l -c` ile soruluyor
+(`pty::shell_path`; `.zprofile` ve `.zshrc` okunuyor), çıktı iki işaretin arasından alınıyor çünkü açılış
+dosyaları ekrana bir şey yazabiliyor. Kabuk 5 saniyede yanıt vermezse uygulamanın kendi PATH'i kullanılıyor.
+TERM ve LANG da Dock'tan açılışta hiç yok; Claude'a `TERM=xterm-256color`, `COLORTERM=truecolor` ve
+(yerel ayar yoksa) `LANG=en_US.UTF-8` veriliyor.
+
+**macOS: PTY çıktısı süreçle eş zamanlı okunmalı.** macOS süreç bitince okunmamış PTY çıktısını atıyor;
+okuyucu iş parçacığı bu yüzden süreç başlar başlamaz okumaya başlıyor (Windows'ta da öyleydi).
+
+**macOS: kısayollar ⌘ ile.** Arayüz `navigator.platform`'a bakıp ⌘F/⌘R, ⌘ + tık ve terminalde ⌘C/⌘V
+kullanıyor; Ctrl + tık macOS'ta sağ tık sayıldığı için çoklu seçimde kullanılamazdı. ⌘V'yi Tauri'nin
+varsayılan macOS menüsündeki *Düzen › Yapıştır* xterm'e iletiyor; terminalde Ctrl+C her zaman Claude'a
+gidiyor. xterm'in `windowsPty` ayarı yalnızca Windows'ta veriliyor.
+
 **Güncelleme Rust tarafında.** Denetim ve kurulum iki Rust komutu (`check_update`, `install_update`);
 arayüz yalnızca bildirimi çiziyor ve ilerlemeyi bir kanaldan alıyor. Windows'ta kurulum başlayınca eklenti
 süreci hemen sonlandırıyor ve `RunEvent::Exit` gelmiyor: terminaller ve pencere durumu bu yüzden kurulumdan
-**önce** kapatılıp kaydediliyor, yoksa Claude süreçleri sahipsiz kalırdı. İndirme yarıda kalırsa bulunan
-sürüm unutulmuyor, yeniden denenebiliyor.
+**önce** kapatılıp kaydediliyor, yoksa Claude süreçleri sahipsiz kalırdı. macOS'ta eklenti yalnızca `.app`
+paketini yerinde değiştiriyor ve uygulamayı yeniden açmıyor; kurulumdan sonra `app.restart()` çağrılıyor.
+İndirme yarıda kalırsa bulunan sürüm unutulmuyor, yeniden denenebiliyor.
+
+**macOS paketi ad-hoc imzalı.** Apple Developer hesabı olmadan paket onaylanamıyor (notarize). İmzasız bir
+paket internetten indirilince macOS "hasarlı" der ve tek çare Terminal'de `xattr` olur; ad-hoc imzalı
+(`signingIdentity: "-"`) paket ise *Gizlilik ve Güvenlik › Yine de Aç* ile açılabiliyor. Ortamda
+`APPLE_SIGNING_IDENTITY` tanımlıysa Tauri yapılandırma yerine onu kullanır.
 
 **Sürüm ve imza denetimi derlemeden önce.** Etiket ile üç dosyadaki sürümün ayrışması ve imza sırlarının
 eksikliği ikisi de derlemenin sonunda, on dakika sonra patlıyordu. İş akışı ikisini en başta denetliyor.
@@ -174,33 +225,44 @@ Rust birim testleri:
 
 | Test | Ne doğruluyor |
 |---|---|
-| `pty::conpty_ciktiyi_okur_ve_kapanir` | Gerçek bir ConPTY süreci açılıyor, çıktısı okunuyor, kapanıyor (imleç sorusu yanıtlanarak) |
+| `pty::pty_ciktiyi_okur_ve_kapanir` | Gerçek bir sözde terminal süreci (Windows'ta ConPTY, macOS'ta Unix PTY) açılıyor, çıktısı okunuyor, kapanıyor (imleç sorusu yanıtlanarak) |
+| `pty::kabuk_ciktisindan_path_ayiklanir` | macOS: kabuğun açılışta yazdıkları PATH'e karışmıyor; işaret ya da PATH yoksa sonuç yok |
+| `pty::kabugun_path_i_okunur` | macOS: gerçek kabuk soruluyor, gelen PATH sistem klasörlerini içeriyor |
 | `pty::yarim_utf8_sonraki_okumaya_kalir` | Bölünmüş çok baytlı karakter bozulmadan birleşiyor |
 | `pty::uuid_dogrulama` | `--resume`'a yalnızca biçimi doğru bir konuşma kimliği gidiyor; komut satırına sızabilecek karakterler reddediliyor |
 | `sessions::kok_klasorler_bulunur` | Bilinen bütün düzenler (Claude-Data, eski Store paketi, klasik kurulum, kurumsal sürüm) bulunuyor; verisi taşınmış eski yer, Claude'a ait olmayan paket ve klasörler atlanıyor |
 | `sessions::elle_secilen_klasor_cozulur` | Elle seçilen klasör (kök, onu içeren klasör ya da içindeki hesap/org klasörü) aynı köke çözülüyor; kayıt olmayan klasör reddediliyor |
 | `sessions::worktree_reposuna_baglanir` | Worktree yolu (alt klasörü ve harf büyüklüğü ne olursa olsun) reponun köküne indiriliyor |
-| `sessions::duz_klasor_normallesir` | Sondaki ayırıcı atılıyor, `/` ters bölüye çevriliyor; Türkçe karakterli yollar korunuyor |
+| `sessions::duz_klasor_normallesir` | Sondaki ayırıcı atılıyor, `/` ters bölüye çevriliyor (macOS'ta `/` kalıyor, `\` dokunulmuyor); Türkçe karakterli yollar korunuyor |
 | `sessions::kimlik_dogrulama` | `claude://` bağlantısına yalnızca biçimi doğru bir oturum kimliği giriyor |
 
-`src-tauri` içinde `cargo test -- --include-ignored` bir de duman testi koşar
-(`sessions::gercek_kayitlar_okunur`): bilgisayardaki gerçek Claude kayıtlarını okuyup özetler. CI'da
-Claude kurulu olmadığı için varsayılan olarak atlanıyor.
+`worktree_reposuna_baglanir` ve `duz_klasor_normallesir` her sistemde o sistemin yol biçimiyle yazılı.
+
+`src-tauri` içinde `cargo test -- --include-ignored` duman testlerini de koşar:
+`sessions::gercek_kayitlar_okunur` bilgisayardaki gerçek Claude kayıtlarını okuyup özetler,
+`pty::claude_cli_calisir` (macOS) kurulu Claude CLI'yi bulup sözde terminalde `claude --version`
+çalıştırır. CI'da Claude kurulu olmadığı için ikisi de varsayılan olarak atlanıyor. Dock'tan açılışı
+denemek için ortamı boşaltarak koşun:
+
+```bash
+env -i HOME=$HOME SHELL=$SHELL PATH=/usr/bin:/bin ~/.cargo/bin/cargo test -- --include-ignored
+```
 
 Arayüz (`src/*.js`) için otomatik test yok; CI yalnızca sözdizimini denetliyor (`node --check`).
 
 ### GitHub Actions
 
-**`check.yml`**: her push ve pull request'te Windows'ta koşar: JS sözdizimi, `npm run vendor`,
+**`check.yml`**: her push ve pull request'te Windows'ta ve macOS'ta koşar: JS sözdizimi, `npm run vendor`,
 `cargo check --all-targets`, `cargo test`.
 
-**`release.yml`**: `v*` etiketi gönderilince koşar:
+**`release.yml`**: `v*` etiketi gönderilince Windows'ta ve macOS'ta ayrı birer iş olarak koşar:
 
 1. Etiket, `tauri.conf.json`, `Cargo.toml` ve `package.json`'daki sürüm aynı mı?
 2. İmza sırları tanımlı mı?
 3. `cargo test`.
-4. tauri-action: kurulum paketini derler, imzalar ve `SessionBoard vX.Y.Z` adıyla yayınlar; sürüme
-   güncelleyicinin okuduğu `latest.json`'ı ekler.
+4. tauri-action: paketi derler (Windows'ta NSIS, macOS'ta Apple Silicon + Intel tek paket:
+   `universal-apple-darwin`), imzalar ve `SessionBoard vX.Y.Z` adıyla yayınlar; sürüme güncelleyicinin
+   okuduğu `latest.json`'ı ekler. İki iş aynı sürüme yükler, `latest.json` birleştirilir.
 
 İlk iki denetimden biri tutmazsa iş akışı derlemeye başlamadan durur.
 
@@ -228,12 +290,13 @@ gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo NYAYAN/claude-session-bo
    git push origin v0.2.2
    ```
 
-İş akışı bitince sürüm sayfasında kurulum dosyası, `.sig` ve `latest.json` bulunur; kurulu uygulamalar
-yeni sürümü en geç 6 saat içinde (ya da bir sonraki açılışta) görür.
+İş akışı bitince sürüm sayfasında Windows kurulum dosyası, macOS DMG'si, güncelleme paketleri, `.sig`'ler
+ve `latest.json` bulunur; kurulu uygulamalar yeni sürümü en geç 6 saat içinde (ya da bir sonraki
+açılışta) görür.
 
 ## Bilinen sınırlar
 
-- Yalnızca Windows.
+- Windows ve macOS; Linux paketi yok.
 - Claude'un oturum kayıtları belgelenmemiş bir iç biçim; bir Claude güncellemesi listeyi bozabilir.
 - Birden çok hesap varsa yalnızca en son etkinliğin olduğu hesabın oturumları görünür.
 - SessionBoard'un grupları Claude'un kenar çubuğundaki özel gruplarla eşitlenmez; ikisi ayrı.
@@ -243,5 +306,8 @@ yeni sürümü en geç 6 saat içinde (ya da bir sonraki açılışta) görür.
   projelerle eşleşir.
 - Aynı oturumu terminalde ve Claude penceresinde aynı anda kullanmak konuşma dosyasını bozabilir;
   uygulama yalnızca uyarır, engellemez.
-- Kurulum paketi kod imzalı değil; Windows SmartScreen ilk kurulumda uyarır.
+- Kurulum paketi kod imzalı değil; Windows SmartScreen ilk kurulumda uyarır. macOS paketi ad-hoc imzalı
+  ama Apple onaylı değil; ilk açılışta *Gizlilik ve Güvenlik › Yine de Aç* gerekir.
+- macOS'ta Claude'un PATH'i SessionBoard açılırken bir kez alınır; kabuk ayarları değişirse uygulamayı
+  yeniden başlatmak gerekir.
 - Arayüz için otomatik test yok.
