@@ -44,7 +44,8 @@ pub struct SessionInfo {
     pub cwd: String,
     /// Oturumun ait olduğu klasör (worktree ise reponun kökü), görüntü biçiminde.
     pub workspace: String,
-    /// `workspace`'in karşılaştırma anahtarı (Windows yolları büyük/küçük harfe duyarsız).
+    /// `workspace`'in karşılaştırma anahtarı (Windows'ta ve macOS'un varsayılan APFS biçiminde
+    /// yollar büyük/küçük harfe duyarsız).
     pub workspace_key: String,
     pub branch: Option<String>,
     /// Konuşma dosyasının kimliği (`~\.claude\projects\…\<id>.jsonl`); `claude --resume` bunu alır.
@@ -86,11 +87,46 @@ const SESSIONS_DIR: &str = "claude-code-sessions";
 /// yapacağı benzer bir taşıma da bulunur. Hiçbiri tutmazsa kullanıcı klasörü elle seçer (`list`'in
 /// `custom` argümanı). Birden çok kök varsa `list` tek bir hesap (en son etkinliğin olduğu) seçtiği
 /// için çift sayılmaz.
+///
+/// macOS'ta kayıtlar `~/Library/Application Support/Claude/claude-code-sessions` altında, düzen
+/// Windows'takiyle aynı. Aynı arama `%APPDATA%` yerine Application Support'ta yapılır; Store paketi
+/// olmadığı için `Packages` taraması yok.
 fn session_roots() -> Vec<PathBuf> {
-    let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
-    let appdata = std::env::var_os("APPDATA").map(PathBuf::from);
-    roots_in(local.as_deref(), appdata.as_deref())
+    #[cfg(windows)]
+    {
+        let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+        let appdata = std::env::var_os("APPDATA").map(PathBuf::from);
+        roots_in(local.as_deref(), appdata.as_deref())
+    }
+    #[cfg(not(windows))]
+    {
+        roots_in(None, data_dir().as_deref())
+    }
 }
+
+/// Claude'un verisinin durduğu üst klasör; klasör seçme penceresi de buradan açılır.
+pub fn data_dir() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        std::env::var_os("LOCALAPPDATA").map(PathBuf::from)
+    }
+    #[cfg(not(windows))]
+    {
+        home_dir().map(|h| h.join("Library").join("Application Support"))
+    }
+}
+
+/// Kullanıcı profilinin kökü (`%USERPROFILE%`, macOS'ta `$HOME`).
+pub fn home_dir() -> Option<PathBuf> {
+    let var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    std::env::var_os(var).filter(|h| !h.is_empty()).map(PathBuf::from)
+}
+
+/// "Bulunamadı" iletisinde nerelere bakıldığı.
+#[cfg(windows)]
+const SEARCHED: &str = "%LOCALAPPDATA% ve %APPDATA% altındaki Claude klasörleri tarandı";
+#[cfg(not(windows))]
+const SEARCHED: &str = "~/Library/Application Support altındaki Claude klasörleri tarandı";
 
 fn roots_in(local: Option<&Path>, appdata: Option<&Path>) -> Vec<PathBuf> {
     let mut roots = Vec::new();
@@ -155,10 +191,9 @@ pub fn list(custom: Option<&str>) -> Result<SessionList, String> {
         None => session_roots(),
     };
     if roots.is_empty() {
-        return Err(
-            "Claude oturum kayıtları bulunamadı (%LOCALAPPDATA% ve %APPDATA% altındaki Claude klasörleri tarandı). ⋯ → Oturum klasörünü seç ile yerini gösterebilirsin."
-                .into(),
-        );
+        return Err(format!(
+            "Claude oturum kayıtları bulunamadı ({SEARCHED}). ⋯ → Oturum klasörünü seç ile yerini gösterebilirsin."
+        ));
     }
 
     // Kayıtlar hesap klasörlerine ayrılır. Kenar çubuğu yalnız oturum açık hesabı gösterir;
@@ -201,10 +236,10 @@ pub fn list(custom: Option<&str>) -> Result<SessionList, String> {
 /// → ms. Profil kökü sanallaştırılmaz; Claude'un içinden ve dışından aynı klasör görünür.
 fn transcript_times() -> HashMap<String, f64> {
     let mut times = HashMap::new();
-    let Some(home) = std::env::var_os("USERPROFILE") else {
+    let Some(home) = home_dir() else {
         return times;
     };
-    for project in sub_dirs(&PathBuf::from(home).join(".claude").join("projects")) {
+    for project in sub_dirs(&home.join(".claude").join("projects")) {
         let Ok(entries) = fs::read_dir(&project) else {
             continue;
         };
@@ -296,16 +331,24 @@ fn parse(path: &Path) -> Option<SessionInfo> {
     })
 }
 
+/// Yol ayırıcısı. macOS'ta `\` geçerli bir dosya adı karakteri olduğu için çevrilmez.
+#[cfg(windows)]
+const SEP: char = '\\';
+#[cfg(not(windows))]
+const SEP: char = '/';
+
 /// Yolu normalleştirir ve worktree'yi reposuna bağlar:
-/// `...\Repo\.claude\worktrees\ad` → `...\Repo`.
+/// `...\Repo\.claude\worktrees\ad` → `...\Repo` (macOS'ta `/` ile).
 pub fn workspace_root(path: &str) -> String {
-    let normalized = path.trim().replace('/', "\\");
-    let trimmed = normalized.trim_end_matches('\\');
+    let normalized = if cfg!(windows) {
+        path.trim().replace('/', "\\")
+    } else {
+        path.trim().to_string()
+    };
+    let trimmed = normalized.trim_end_matches(SEP);
+    let marker = format!("{SEP}.claude{SEP}worktrees{SEP}");
     // ASCII küçültme bayt uzunluğunu korur → bulunan indeks orijinal dizgede de geçerli.
-    match trimmed
-        .to_ascii_lowercase()
-        .find("\\.claude\\worktrees\\")
-    {
+    match trimmed.to_ascii_lowercase().find(&marker) {
         Some(i) => trimmed[..i].to_string(),
         None => trimmed.to_string(),
     }
@@ -324,6 +367,7 @@ pub fn is_valid_id(id: &str) -> bool {
 mod tests {
     use super::*;
 
+    #[cfg(windows)]
     #[test]
     fn worktree_reposuna_baglanir() {
         assert_eq!(
@@ -334,6 +378,16 @@ mod tests {
             workspace_root(r"C:\Work\App\.Claude\Worktrees\x\sub"),
             r"C:\Work\App"
         );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn worktree_reposuna_baglanir() {
+        assert_eq!(
+            workspace_root("/Users/ali/Work - Local/my-app/.claude/worktrees/brave-otter-1a2b3c"),
+            "/Users/ali/Work - Local/my-app"
+        );
+        assert_eq!(workspace_root("/Users/ali/App/.Claude/Worktrees/x/sub"), "/Users/ali/App");
     }
 
     fn temp_base(name: &str) -> PathBuf {
@@ -404,10 +458,20 @@ mod tests {
         assert_eq!(rejected, None);
     }
 
+    #[cfg(windows)]
     #[test]
     fn duz_klasor_normallesir() {
         assert_eq!(workspace_root(r"C:\Work\My Project\"), r"C:\Work\My Project");
         assert_eq!(workspace_root("C:/Work/Şube/Proje"), r"C:\Work\Şube\Proje");
+    }
+
+    /// macOS: sondaki `/` atılır, `\` dosya adının parçası olduğu için olduğu gibi kalır.
+    #[cfg(not(windows))]
+    #[test]
+    fn duz_klasor_normallesir() {
+        assert_eq!(workspace_root("/Users/ali/My Project/"), "/Users/ali/My Project");
+        assert_eq!(workspace_root("/Users/ali/Şube/Proje"), "/Users/ali/Şube/Proje");
+        assert_eq!(workspace_root(r"/Users/ali/a\b"), r"/Users/ali/a\b");
     }
 
     /// Bilgisayardaki Claude kayıtlarıyla duman testi (Claude masaüstü kurulu olmalı):

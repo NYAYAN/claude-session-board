@@ -6,7 +6,7 @@
 
 **Claude Code oturumlarınızı klasöre ve gruba ayıran, istediğiniz sırada tutan pencere.**
 
-Windows için · Claude masaüstü uygulamasının yanında çalışır · Ücretsiz ve açık kaynak
+Windows ve macOS için · Claude masaüstü uygulamasının yanında çalışır · Ücretsiz ve açık kaynak
 
 [![Son sürüm](https://img.shields.io/github/v/release/NYAYAN/claude-session-board?label=son%20s%C3%BCr%C3%BCm&color=2f81f7)](https://github.com/NYAYAN/claude-session-board/releases/latest)
 [![Denetim](https://github.com/NYAYAN/claude-session-board/actions/workflows/check.yml/badge.svg)](https://github.com/NYAYAN/claude-session-board/actions/workflows/check.yml)
@@ -36,7 +36,7 @@ Sık kullandığınız klasörleri yıldızla işaretleyip tek tıkla süzebilir
 
 Klasörleri, grupları ve oturumları sürükleyerek sıralayın. Bir oturumu başka bir oturumun üst ya da alt
 yarısına bırakınca önüne ya da arkasına geçer; o oturum başka bir gruptaysa oraya, tam o konuma taşınır.
-Ctrl ve Shift ile seçtiğiniz oturumlar birlikte taşınır. Henüz sıraya koymadığınız yeni oturumlar grubun
+Ctrl (macOS'ta ⌘) ve Shift ile seçtiğiniz oturumlar birlikte taşınır. Henüz sıraya koymadığınız yeni oturumlar grubun
 en üstünde, son etkinliğe göre durur; dizdiğiniz listenin ortasında kaybolmazlar.
 
 <p align="center">
@@ -62,7 +62,7 @@ değişmez.
 
 ### Ve dahası
 
-- **Arama:** Ctrl+F; Türkçe karakterlere duyarsız (`cetele` → *Çetele*), başlıkta ve dal adında arar.
+- **Arama:** Ctrl+F (macOS'ta ⌘F); Türkçe karakterlere duyarsız (`cetele` → *Çetele*), başlıkta ve dal adında arar.
 - **Klasör birleştirme:** projeyi başka bir klasöre taşıdıysanız eski klasörde kalan oturumları yenisinin
   altında toplayın; istediğinizde ayırın.
 - **Uzun grup listeleri:** *Gruba taşı* menüsü ilk beş grubu gösterir, kalanlar *Daha fazla* ile açılır.
@@ -85,14 +85,26 @@ bilgisayarınızı korudu" (*Windows protected your PC*) diyebilir: **Ek bilgi**
 v0.1.0 kullanıyorsanız o sürümde güncelleyici yok; yeni sürümü bir kez elle kurun. Gruplarınız ve
 sıralarınız kurulumdan etkilenmez.
 
+**macOS 11 ve sonrası (Apple Silicon ve Intel):** `SessionBoard_<sürüm>_universal.dmg` dosyasını indirip
+açın, SessionBoard'u **Uygulamalar** klasörüne sürükleyin. Paket Apple tarafından onaylı (notarize)
+olmadığı için ilk açılışta macOS "açılamıyor" der: **Sistem Ayarları › Gizlilik ve Güvenlik**'te en altta
+**Yine de Aç** (*Open Anyway*) düğmesine basın; bu bir kez gerekir.
+
 **Gerekenler.** Claude masaüstü uygulaması; oturum listesi onun kayıtlarından okunur. Kayıtların yeri
 kuruluma göre değişiyor; SessionBoard onu kendisi bulur, bulamazsa *⋯ › Oturum klasörünü seç…* ile
 gösterilir. Windows 10'da
 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (Windows 11'de yerleşik).
-Gömülü terminal için bağımsız Claude Code CLI; PowerShell'de bir kez kurup giriş yapın:
+Gömülü terminal için bağımsız Claude Code CLI; bir kez kurup giriş yapın. Windows'ta PowerShell'de:
 
 ```powershell
 irm https://claude.ai/install.ps1 | iex
+claude   # tarayıcıdan giriş yapın, sonra /exit
+```
+
+macOS'ta Terminal'de:
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
 claude   # tarayıcıdan giriş yapın, sonra /exit
 ```
 
@@ -101,16 +113,16 @@ masaüstü uygulama sağlıyor. Ayrıntı: [docs/ozellikler.md](docs/ozellikler.
 
 ## Klavye kısayolları
 
-| Ne yapar | Kısayol |
-|---|---|
-| Oturum ara | Ctrl+F |
-| Listeyi yenile | F5 / Ctrl+R |
-| Seçime ekle / çıkar | Ctrl + tık |
-| Aralık seç | Shift + tık |
-| Menüyü kapat, aramayı temizle, seçimi kaldır (sırayla) | Esc |
-| Terminalde kopyala | Ctrl+C (seçim varken) / Ctrl+Shift+C |
-| Terminalde yapıştır | Ctrl+V |
-| Terminal sekmesini kapat | Orta tık |
+| Ne yapar | Windows | macOS |
+|---|---|---|
+| Oturum ara | Ctrl+F | ⌘F |
+| Listeyi yenile | F5 / Ctrl+R | ⌘R |
+| Seçime ekle / çıkar | Ctrl + tık | ⌘ + tık |
+| Aralık seç | Shift + tık | Shift + tık |
+| Menüyü kapat, aramayı temizle, seçimi kaldır (sırayla) | Esc | Esc |
+| Terminalde kopyala | Ctrl+C (seçim varken) / Ctrl+Shift+C | ⌘C |
+| Terminalde yapıştır | Ctrl+V | ⌘V |
+| Terminal sekmesini kapat | Orta tık | Orta tık |
 
 Tam liste ve fare davranışları: [docs/ozellikler.md](docs/ozellikler.md#klavye-kısayolları).
 
@@ -121,8 +133,8 @@ Uygulama ağ üzerinden yalnızca yeni sürüm olup olmadığını GitHub'a sora
 
 | Dosya | İçerik |
 |---|---|
-| `%USERPROFILE%\.sessionboard\state.json` | Gruplar, atamalar, sıralar, tercihler |
-| `%USERPROFILE%\.sessionboard\state.json.bak` | Bir önceki kayıt |
+| `%USERPROFILE%\.sessionboard\state.json` (macOS: `~/.sessionboard/state.json`) | Gruplar, atamalar, sıralar, tercihler |
+| `%USERPROFILE%\.sessionboard\state.json.bak` (macOS: `~/.sessionboard/state.json.bak`) | Bir önceki kayıt |
 
 Claude'un oturum kayıtlarına hiçbir şey yazılmaz. Dosyanın içeriği ve neden AppData'da olmadığı:
 [docs/ozellikler.md](docs/ozellikler.md#veri-dosyaları).
@@ -136,8 +148,8 @@ Claude'un oturum kayıtlarına hiçbir şey yazılmaz. Dosyanın içeriği ve ne
 | [Geliştirme](docs/gelistirme.md) | Mimari, kararların nedenleri, testler, CI, sürüm çıkarma ve güncelleme anahtarı |
 
 SessionBoard [Tauri 2](https://tauri.app) (Rust), paketleyicisiz düz JavaScript ve
-[xterm.js](https://xtermjs.org) ile yazıldı. Terminal katmanı `portable-pty` üzerinden Windows'un
-ConPTY'sini kullanır.
+[xterm.js](https://xtermjs.org) ile yazıldı. Terminal katmanı `portable-pty` üzerinden Windows'ta
+ConPTY'yi, macOS'ta Unix sözde terminalini kullanır.
 
 ## Lisans
 

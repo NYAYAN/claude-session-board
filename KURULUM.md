@@ -20,12 +20,12 @@ npm install
 
 Bilgisayarda olması gerekenler:
 
-| | |
-|---|---|
-| Node.js | 20+ |
-| Rust | 1.82+ |
-| Visual Studio | "C++ ile masaüstü geliştirme" bileşeni |
-| Windows | 10 / 11 |
+| | Windows | macOS |
+|---|---|---|
+| Node.js | 20+ | 20+ |
+| Rust | 1.82+ | 1.82+ |
+| Derleyici | Visual Studio, "C++ ile masaüstü geliştirme" bileşeni | Xcode Command Line Tools (`xcode-select --install`) |
+| Sistem | Windows 10 / 11 | macOS 11+ |
 
 Windows 10 kullanıyorsan ayrıca
 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
@@ -34,12 +34,19 @@ gerekiyor; Windows 11'de yerleşik.
 ## 2. Kurucuyu üret
 
 Kurulum paketi derlenirken güncelleme imzası da üretiliyor, bu yüzden önce imza anahtarını aynı
-PowerShell penceresinde tanıt (anahtarın nereden geldiği:
-[docs/gelistirme.md](docs/gelistirme.md#sürüm-çıkarma)):
+pencerede tanıt (anahtarın nereden geldiği:
+[docs/gelistirme.md](docs/gelistirme.md#sürüm-çıkarma)). Windows'ta PowerShell'de:
 
 ```powershell
 $env:TAURI_SIGNING_PRIVATE_KEY = (Get-Content "$env:USERPROFILE\.tauri\sessionboard.key" -Raw).Trim()
 $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = (Get-Content "$env:USERPROFILE\.tauri\sessionboard.key.password" -Raw).Trim()
+```
+
+macOS'ta Terminal'de:
+
+```bash
+export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/sessionboard.key)"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(cat ~/.tauri/sessionboard.key.password)"
 ```
 
 ```bash
@@ -49,7 +56,15 @@ npm run build
 İlk derleme birkaç dakika sürer, sonrakiler daha kısa. Sonunda ekrana üretilen dosyaların yolları
 yazılır.
 
-**Oluşan dosyalar**: `src-tauri\target\release\bundle\nsis\` altında:
+**Yalnız kendi bilgisayarın için, anahtarsız.** Güncelleme paketi gerekmiyorsa imzayı kapatıp derle:
+
+```bash
+npm run tauri build -- --config '{"bundle":{"createUpdaterArtifacts":false}}'
+```
+
+### Windows'ta oluşan dosyalar
+
+`src-tauri\target\release\bundle\nsis\` altında:
 
 | Dosya | Ne işe yarar |
 |---|---|
@@ -64,13 +79,39 @@ ikili. Başlat menüsüne kısayol koymaz.
 > `cmd /c '"<Visual Studio klasörü>\VC\Auxiliary\Build\vcvars64.bat" && npm run build'`.
 > Ayrıntı: [docs/gelistirme.md](docs/gelistirme.md#lnk1104-cannot-open-file-msvcrtlib).
 
+### macOS'ta oluşan dosyalar
+
+`src-tauri/target/release/bundle/` altında:
+
+| Dosya | Ne işe yarar |
+|---|---|
+| `macos/SessionBoard.app` | Uygulamanın kendisi |
+| `dmg/SessionBoard_<sürüm>_aarch64.dmg` | Dağıtım için disk görüntüsü (Intel Mac'te `_x64`) |
+| `macos/SessionBoard.app.tar.gz` + `.sig` | Güncelleyicinin indirdiği paket ve imzası; yalnızca sürüm yayınlarken gerekir |
+
+Hem Apple Silicon hem Intel'de çalışan tek paket için iki hedefi bir kez ekleyip öyle derle (CI böyle
+derliyor):
+
+```bash
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+npm run build -- --target universal-apple-darwin
+```
+
+O zaman dosyalar `src-tauri/target/universal-apple-darwin/release/bundle/` altında, DMG'nin adı
+`_universal.dmg` ile biter.
+
+> **DMG adımı "Not authorized to send Apple events to Finder" ile düşerse** derlemeyi çalıştıran
+> uygulamanın Finder'ı yönetme izni yok (DMG penceresinin düzeni Finder'a yaptırılıyor). macOS ilk
+> seferde sorar; sorduysa ve reddedildiyse **Sistem Ayarları › Gizlilik ve Güvenlik › Otomasyon**'dan aç.
+> `.app` bu hatadan önce üretilmiş olur, yalnızca DMG eksik kalır.
+
 > **"A public key has been found, but no private key" alırsan** imza anahtarı tanıtılmamış; yukarıdaki
-> iki satırı aynı pencerede çalıştırıp yeniden dene.
+> iki satırı aynı pencerede çalıştırıp yeniden dene ya da anahtarsız derle.
 
 ## 3. Kur
 
-`SessionBoard_<sürüm>_x64-setup.exe` dosyasına çift tıkla. Kurulum kullanıcı klasörüne yapılır, yönetici
-hakkı istemez.
+**Windows:** `SessionBoard_<sürüm>_x64-setup.exe` dosyasına çift tıkla. Kurulum kullanıcı klasörüne
+yapılır, yönetici hakkı istemez.
 
 Kurulduğu yer:
 
@@ -78,10 +119,20 @@ Kurulduğu yer:
 C:\Users\<kullanıcı>\AppData\Local\SessionBoard\
 ```
 
+**macOS:** `SessionBoard.app`'i **Uygulamalar** klasörüne kopyala (ya da DMG'yi açıp oraya sürükle):
+
+```bash
+cp -R src-tauri/target/release/bundle/macos/SessionBoard.app /Applications/
+```
+
+Kendi derlediğin uygulama ilk açılışta uyarı vermez; uyarı yalnızca internetten indirilen pakette çıkar
+(bkz. [README](README.md#paketi-indirip-kurmak)).
+
 Gruplar ve tercihler ayrı bir yerde durur; kaldırma işlemi onlara dokunmaz:
 
 ```
-C:\Users\<kullanıcı>\.sessionboard\
+C:\Users\<kullanıcı>\.sessionboard\     (Windows)
+~/.sessionboard/                       (macOS)
 ```
 
 ## 4. Geliştirirken
