@@ -1,7 +1,8 @@
 # Her push'ta derleme ve testler. `release.yml` yalnız etiket atılınca koştuğu için kırıklar
 # ancak sürüm anında görülürdü; burada her push'ta yakalanır.
 #
-# Yalnız Windows: uygulama Windows'a özel (Claude masaüstü kayıtları, ConPTY, claude:// işleyicisi).
+# Windows ve macOS: kayıtların yeri, yol biçimi ve sözde terminal (ConPTY / Unix PTY) iki
+# sistemde ayrı kodla çalışıyor; testler de sistem başına ayrı.
 name: Check
 
 on:
@@ -12,8 +13,12 @@ on:
 
 jobs:
   check:
-    name: cargo check + test, JS sözdizimi
-    runs-on: windows-latest
+    name: cargo check + test, JS sözdizimi (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -22,7 +27,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
-          key: check
+          key: check-${{ matrix.os }}
 
       - uses: actions/setup-node@v4
         with:
@@ -41,8 +46,9 @@ jobs:
       # tauri derlemesi ön yüz klasörünü gömdüğü için xterm dosyaları önce kopyalanır.
       - run: npm run vendor
 
-      # `--all-targets` testleri de derler. ConPTY uçtan uca testi (pty.rs) burada da koşar;
-      # bilgisayardaki Claude kayıtlarını okuyan duman testi `#[ignore]` olduğu için atlanır.
+      # `--all-targets` testleri de derler. Sözde terminal uçtan uca testi (pty.rs) burada da koşar;
+      # bilgisayardaki Claude kayıtlarını ve CLI'yi kullanan duman testleri `#[ignore]` olduğu için
+      # atlanır.
       - name: cargo check
         working-directory: ./src-tauri
         run: cargo check --all-targets

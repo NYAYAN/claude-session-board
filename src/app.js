@@ -14,6 +14,9 @@
   const LINK_PREFIX = 'claude://claude.ai/epitaxy/';
   // "Gruba taşı" menüsünde ilk bakışta gösterilen grup sayısı; kalanlar "Daha fazla" ile açılır.
   const MENU_GROUP_LIMIT = 5;
+  // macOS'ta kısayollar Ctrl değil ⌘ ile (Ctrl + tık orada sağ tık sayılır).
+  const IS_MAC = /Mac/.test(navigator.platform);
+  const MOD = IS_MAC ? '⌘' : 'Ctrl';
 
   /** @type {Array<{id:string,title:string,cwd:string,workspace:string,workspaceKey:string,branch:?string,archived:boolean,createdAt:number,lastActivityAt:number}>} */
   let sessions = [];
@@ -81,6 +84,10 @@
   const menuBtn = document.getElementById('menu');
   const favToggleBtn = document.getElementById('fav-toggle');
   const terminals = window.SessionTerminals;
+  if (IS_MAC) {
+    searchEl.placeholder = 'Oturum ara (⌘F)';
+    refreshBtn.title = 'Yenile (⌘R)';
+  }
 
   const ICONS = {
     chevron: '<svg viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -448,7 +455,7 @@
     box.innerHTML =
       'Klasör satırındaki <b>+</b> ile grup ekle, oturumları gruba ya da grup içinde istediğin yere <b>sürükle</b>. ' +
       'Klasörleri ve grupları sürükleyerek sırala, <b>☆</b> ile favorilere ekle. ' +
-      '<b>Ctrl</b>/<b>Shift</b> ile çoklu seçim, <b>sağ tık</b> ile tüm işlemler. ' +
+      `<b>${MOD}</b>/<b>Shift</b> ile çoklu seçim, <b>sağ tık</b> ile tüm işlemler. ` +
       'Oturumun üzerine gelince çıkan düğmelerle <b>terminalde</b> ya da <b>Claude\'da</b> aç.';
     const close = el('button', 'row-btn');
     close.innerHTML = ICONS.close;
@@ -1698,6 +1705,7 @@
   document.addEventListener('keydown', (e) => {
     if (e.target instanceof Element && e.target.closest('#term-area')) return;
     const key = e.key.toLowerCase();
+    const mod = IS_MAC ? e.metaKey : e.ctrlKey;
     if (e.key === 'Escape') {
       if (menuEl) closeMenu();
       else if (query) {
@@ -1708,11 +1716,11 @@
         selected.clear();
         render();
       }
-    } else if (e.ctrlKey && key === 'f') {
+    } else if (mod && key === 'f') {
       e.preventDefault();
       searchEl.focus();
       searchEl.select();
-    } else if (e.key === 'F5' || (e.ctrlKey && key === 'r')) {
+    } else if (e.key === 'F5' || (mod && key === 'r')) {
       e.preventDefault();
       refresh();
     }

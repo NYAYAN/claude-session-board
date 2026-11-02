@@ -27,8 +27,8 @@ async fn pick_sessions_dir(app: AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
     tauri::async_runtime::spawn_blocking(move || {
         let mut dialog = app.dialog().file().set_title("Claude oturum klasörünü seç");
-        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-            dialog = dialog.set_directory(local);
+        if let Some(dir) = sessions::data_dir() {
+            dialog = dialog.set_directory(dir);
         }
         dialog
             .blocking_pick_folder()
@@ -39,8 +39,8 @@ async fn pick_sessions_dir(app: AppHandle) -> Result<Option<String>, String> {
     .map_err(|e| e.to_string())?
 }
 
-/// Oturumu Claude'da açar: `claude://claude.ai/epitaxy/<id>` bağlantısı Windows'ta kayıtlı
-/// protokol işleyicisine (Claude.exe) gider, Claude da o oturuma geçer. Kabuk çağrısı bir iki
+/// Oturumu Claude'da açar: `claude://claude.ai/epitaxy/<id>` bağlantısı kayıtlı protokol
+/// işleyicisine (Windows'ta Claude.exe, macOS'ta Claude.app) gider, Claude da o oturuma geçer. Kabuk çağrısı bir iki
 /// saniye sürebildiği için ana iş parçacığında DEĞİL (pencere donar, yükleniyor göstergesi çizilemez).
 #[tauri::command]
 async fn open_session(id: String) -> Result<(), String> {
@@ -174,6 +174,7 @@ fn main() {
         ])
         .build(tauri::generate_context!())
         .expect("SessionBoard başlatılamadı");
+    std::thread::spawn(pty::prepare);
 
     app.run(|app, event| {
         if let RunEvent::Exit = event {

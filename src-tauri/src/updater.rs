@@ -1,6 +1,7 @@
 //! Kendini güncelleme. GitHub'daki son sürümün `latest.json`'ı denetlenir (adres:
-//! `tauri.conf.json` → `plugins.updater.endpoints`); yeni sürüm varsa NSIS kurulum paketi indirilir,
-//! imzası `plugins.updater.pubkey` ile doğrulanır ve sessiz kurulum başlatılır. Paketler ve
+//! `tauri.conf.json` → `plugins.updater.endpoints`); yeni sürüm varsa paket (Windows'ta NSIS kurulum
+//! paketi, macOS'ta `.app.tar.gz`) indirilir, imzası `plugins.updater.pubkey` ile doğrulanır ve
+//! kurulur. Paketler ve
 //! `latest.json` sürüm çıkarılırken CI'da imzalanıp yayınlanır (bkz. `.github/workflows/release.yml`).
 //!
 //! Denetim ile kurulum ayrı komutlardır: kullanıcı onaylayana kadar bulunan sürüm burada bekler.
@@ -52,7 +53,8 @@ pub async fn check(app: &AppHandle, pending: &Pending) -> Result<UpdateInfo, Str
 
 /// Bekleyen sürümü indirip kurar. Windows'ta kurulum başlayınca eklenti uygulamayı hemen
 /// sonlandırır (`RunEvent::Exit` gelmez); bu yüzden terminaller ve pencere durumu önceden kapatılır.
-/// İndirme yarıda kalırsa bekleyen sürüm silinmez, yeniden denenebilir.
+/// macOS'ta eklenti yalnız `.app` paketini yerinde değiştirir; yeni sürüm uygulama yeniden
+/// başlatılınca açılır. İndirme yarıda kalırsa bekleyen sürüm silinmez, yeniden denenebilir.
 pub async fn install(app: &AppHandle, pending: &Pending, progress: Channel<Progress>) -> Result<(), String> {
     let update = pending
         .0
@@ -74,5 +76,9 @@ pub async fn install(app: &AppHandle, pending: &Pending, progress: Channel<Progr
     let _ = progress.send(Progress::Install);
     let _ = app.save_window_state(StateFlags::all());
     crate::pty::close_all(app);
-    update.install(bytes).map_err(|e| e.to_string())
+    update.install(bytes).map_err(|e| e.to_string())?;
+    #[cfg(not(windows))]
+    app.restart();
+    #[cfg(windows)]
+    Ok(())
 }

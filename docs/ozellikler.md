@@ -46,7 +46,7 @@ gösterilir; imleç hedef satırın üst yarısındaysa önüne, alt yarısında
   (ya da boş bir gruba) bırakmak oturumu en üste koyar; *Grupsuz*'a bırakmak gruptan çıkarır. Oturumlar
   yalnızca kendi klasörü içinde taşınır.
 
-Ctrl ve Shift ile seçilen oturumlar birlikte sürüklenir ve ekrandaki sıralarını koruyarak yerleşir.
+Ctrl (macOS'ta ⌘) ve Shift ile seçilen oturumlar birlikte sürüklenir ve ekrandaki sıralarını koruyarak yerleşir.
 Aramadayken sıralama kapalıdır, oturumlar yalnızca gruba taşınabilir: süzülmüş bir listede "şunun
 arkasına" demenin görünmeyen oturumlar için bir anlamı yok.
 
@@ -80,17 +80,19 @@ grupları hedefte görünür. Hedefin sağ tık menüsünde *Ayır* ile geri al�
 [Bilinen sınırlar](gelistirme.md#bilinen-sınırlar)).
 
 **Seçim.** Tek tık yalnızca seçer, hiçbir şeyi açmaz: listeyi gezerken yanlışlıkla bir oturuma geçmek ya
-da terminal başlatmak istenmez. `Ctrl` + tık seçime ekler ya da çıkarır, `Shift` + tık aralık seçer.
+da terminal başlatmak istenmez. `Ctrl` + tık (macOS'ta `⌘` + tık) seçime ekler ya da çıkarır, `Shift` +
+tık aralık seçer.
 
-**Arama.** `Ctrl+F` arama kutusuna geçer. Arama Türkçe karakterlere ve büyük/küçük harfe duyarsızdır
+**Arama.** `Ctrl+F` (macOS'ta `⌘F`) arama kutusuna geçer. Arama Türkçe karakterlere ve büyük/küçük harfe duyarsızdır
 (`cetele` → *Çetele*, `isim` → *İsim*); oturum başlığında ve dal adında arar. Aramada daraltılmış klasör
 ve gruplar açık görünür, eşleşmesi olmayan klasör ve gruplar gizlenir. `Esc` aramayı temizler.
 
 **Claude'da açma.** Oturumun ikinci düğmesi `claude://claude.ai/epitaxy/<oturum-id>` bağlantısını açar;
-Windows bunu Claude masaüstü uygulamasına iletir. Claude öne gelene kadar düğme dönen bir gösterge olur
+işletim sistemi bunu Claude masaüstü uygulamasına iletir. Claude öne gelene kadar düğme dönen bir gösterge olur
 (en çok 10 saniye). *Bağlantıyı kopyala* aynı bağlantıyı panoya kopyalar.
 
-**Kendiliğinden yenileme.** Liste 20 saniyede bir ve pencereye her dönüşte yenilenir; `F5` elle yeniler.
+**Kendiliğinden yenileme.** Liste 20 saniyede bir ve pencereye her dönüşte yenilenir; `F5` (macOS'ta
+`⌘R`) elle yeniler.
 Siz bir şey yaparken (menü açık, ad düzenleniyor, sürükleme sürüyor, fare tuşu basılı) yenileme bekletilir
 ve iş bitince uygulanır: ağaç tam o anda yeniden çizilse tık ya da sürükleme kaybolurdu.
 
@@ -108,17 +110,32 @@ tutar. *⋯ › Tümünü daralt / Tümünü genişlet* bütün klasörleri bird
 ## Gömülü terminal
 
 Gömülü terminal **bağımsız Claude Code CLI** ister. Masaüstü uygulamanın içindeki kopya kullanılamaz,
-çünkü onun oturum açma bilgisini masaüstü uygulama sağlıyor. Windows Terminal ya da PowerShell'de bir kez
-kurup giriş yapın:
+çünkü onun oturum açma bilgisini masaüstü uygulama sağlıyor. Bir kez kurup giriş yapın.
+
+Windows'ta, Windows Terminal ya da PowerShell'de:
 
 ```powershell
 irm https://claude.ai/install.ps1 | iex
 claude   # tarayıcıdan giriş yapın, sonra /exit
 ```
 
+macOS'ta, Terminal uygulamasında:
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+claude   # tarayıcıdan giriş yapın, sonra /exit
+```
+
 SessionBoard `claude`'u önce PATH'te, sonra `%USERPROFILE%\.local\bin`'de ve `%APPDATA%\npm`'de arar;
 son ikisi sayesinde CLI'yi SessionBoard açıkken kurduysanız uygulamayı yeniden başlatmak gerekmez. CLI
 bulunamazsa terminal sekmesi kurulum komutunu yazar.
+
+**macOS'ta PATH.** Dock'tan ya da Finder'dan açılan bir uygulama yalnızca sistem klasörlerini görür;
+Homebrew, nvm ya da `~/.local/bin` PATH'te olmaz. SessionBoard bu yüzden açılışta PATH'i bir kez sizin
+kabuğunuza (`$SHELL`, `.zprofile` ve `.zshrc` okunarak) sorar ve Claude'u o PATH ile başlatır; Claude'un
+çalıştırdığı `git`, `node`, `npm` gibi araçlar da kendi terminalinizdeki gibi bulunur. `claude` ayrıca
+`~/.local/bin`, `~/.claude/local`, `/opt/homebrew/bin` ve `/usr/local/bin`'de aranır. PATH'inizi
+değiştirdiyseniz SessionBoard'u yeniden başlatın.
 
 **Sürdürme.** Terminal düğmesi şu komutu oturumun kendi klasöründe çalıştırır:
 
@@ -146,11 +163,13 @@ dokunulmaz). Ağaçla terminal arasındaki çizgi sürüklenerek genişlik ayarl
 
 **Kopyala / yapıştır.** `Ctrl+C` seçim varken kopyalar, seçim yokken Claude'a gider (çalışan işi keser).
 `Ctrl+Shift+C` her zaman kopyalar, `Ctrl+V` yapıştırır. Terminalde sağ tık seçim varsa kopyalar.
+macOS'ta alışılan düzen: `⌘C` kopyalar, `⌘V` yapıştırır, `Ctrl+C` her zaman Claude'a gider.
 
 **Claude'un içinden açılınca.** SessionBoard Claude'un kendi terminalinden başlatıldıysa masaüstü
 uygulamanın kendi Claude Code sürecine verdiği değişkenleri miras alır (`CLAUDE*`, `ANTHROPIC_BASE_URL`,
 MCP bağlantı değişkenleri). Bunlarla başlayan CLI kendini masaüstüne bağlı sanar; bu yüzden terminale
-aktarılmazlar. Başlat menüsünden açılışta bu değişkenler yoktur, kullanıcının kendi ayarlarına dokunulmaz.
+aktarılmazlar. Başlat menüsünden ya da Dock'tan açılışta bu değişkenler yoktur, kullanıcının kendi
+ayarlarına dokunulmaz.
 
 ## Güncelleme
 
@@ -161,7 +180,8 @@ sürümü yazar, *Güncellemeleri denetle* elle denetler ve sonucu söyler.
 **Güncelle** önce onay ister; terminalde çalışan Claude varsa kaç tanesinin kapanacağını yazar. Ardından
 paket indirilir (alt çubukta yüzde olarak), imzası uygulamanın içindeki açık anahtarla doğrulanır,
 terminaller kapatılır, pencere durumu kaydedilir ve kurulum pasif kipte (yalnızca ilerleme çubuğu)
-başlar; kurulum bitince uygulama yeniden açılır. Konuşma kayıtları, gruplar ve sıralar etkilenmez.
+başlar; kurulum bitince uygulama yeniden açılır. macOS'ta kurulum penceresi yoktur: uygulama paketi yerinde
+yenilenir ve SessionBoard kendiliğinden yeniden başlar. Konuşma kayıtları, gruplar ve sıralar etkilenmez.
 
 İmzası tutmayan bir paket kurulmaz. Ağ yokken açılıştaki otomatik denetim sessizce geçer; elle denetim
 hatayı yazar. v0.1.0'da güncelleyici yoktur; ondan bir kez elle geçmek gerekir.
@@ -174,7 +194,7 @@ hatayı yazar. v0.1.0'da güncelleyici yoktur; ondan bir kez elle geçmek gereki
 | Hesap | Birden çok hesap klasörü varsa en son etkinliğin olduğu hesap gösterilir: Claude'un hangi hesapla açık olduğu dosyalardan bilinemiyor |
 | Klasör | Kaydın `originCwd` alanı; worktree oturumları reponun köküne bağlanır |
 | Son etkinlik | Masaüstü kaydı ile konuşma dosyasının (`~\.claude\projects\…\<cliSessionId>.jsonl`) değiştirilme zamanının büyüğü. Oturum terminalde sürdürülünce masaüstünün kaydı güncellenmez, konuşma dosyası güncellenir |
-| Oturumu açma | `claude://claude.ai/epitaxy/<oturum-id>` → Windows'ta kayıtlı Claude protokol işleyicisi |
+| Oturumu açma | `claude://claude.ai/epitaxy/<oturum-id>` → kayıtlı Claude protokol işleyicisi (Windows'ta Claude.exe, macOS'ta Claude.app) |
 
 ### Kayıtların yeri
 
@@ -186,8 +206,10 @@ düzenler:
 | Store (MSIX), Ekim 2026'dan sonra | `%LOCALAPPDATA%\Claude-Data\<paket>\claude-code-sessions`; Claude verisini buraya taşıdı ve eski yerde yalnızca `.user-data-left.*` işaret dosyası bıraktı |
 | Store (MSIX), daha eski | `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code-sessions` (AppData'sı sanallaştırıldığı için kayıtlar fiziksel olarak burada) |
 | Klasik kurulum | `%APPDATA%\Claude\claude-code-sessions` |
+| macOS | `~/Library/Application Support/Claude/claude-code-sessions` |
 
-SessionBoard bunları tek tek beklemek yerine **arar**: `%LOCALAPPDATA%` ve `%APPDATA%` altında adında
+SessionBoard bunları tek tek beklemek yerine **arar**: `%LOCALAPPDATA%` ve `%APPDATA%` (macOS'ta
+`~/Library/Application Support`) altında adında
 "claude" ya da "anthropic" geçen her klasörde ve onun bir alt seviyesinde, Store paketlerinde de
 `LocalCache` altında `claude-code-sessions` klasörüne bakar. Böylece kurumsal sürüm gibi farklı adlı
 kurulumlar ya da Claude'un ileride yapacağı benzer bir taşıma da kendiliğinden bulunur. Birden çok yer
@@ -205,7 +227,7 @@ kabul edilmez. Seçim o bilgisayarın `state.json`'ında kalır, *⋯ › Otomat
 
 ## Veri dosyaları
 
-Konum `%USERPROFILE%\.sessionboard\`:
+Konum `%USERPROFILE%\.sessionboard\` (macOS'ta `~/.sessionboard/`):
 
 | Dosya | İçerik |
 |---|---|
@@ -230,17 +252,17 @@ için gruplar yalnızca aynı yolda açılmış projelerle eşleşir.
 
 **Ağaçta**
 
-| Ne yapar | Kısayol |
-|---|---|
-| Oturumu seç (açmaz) | Tık |
-| Seçime ekle / çıkar | Ctrl + tık |
-| Aralık seç | Shift + tık |
-| Oturum, grup ya da klasör menüsü | Sağ tık |
-| Taşı ve sırala | Sürükle-bırak |
-| Klasörü / grubu daralt ya da aç | Satıra tık |
-| Oturum ara | Ctrl+F |
-| Listeyi yenile | F5 / Ctrl+R |
-| Menüyü kapat; yoksa aramayı temizle; yoksa seçimi kaldır | Esc |
+| Ne yapar | Windows | macOS |
+|---|---|---|
+| Oturumu seç (açmaz) | Tık | Tık |
+| Seçime ekle / çıkar | Ctrl + tık | ⌘ + tık |
+| Aralık seç | Shift + tık | Shift + tık |
+| Oturum, grup ya da klasör menüsü | Sağ tık | Sağ tık / Ctrl + tık |
+| Taşı ve sırala | Sürükle-bırak | Sürükle-bırak |
+| Klasörü / grubu daralt ya da aç | Satıra tık | Satıra tık |
+| Oturum ara | Ctrl+F | ⌘F |
+| Listeyi yenile | F5 / Ctrl+R | ⌘R |
+| Menüyü kapat; yoksa aramayı temizle; yoksa seçimi kaldır | Esc | Esc |
 
 **Ad düzenlerken ve onay pencerelerinde**
 
@@ -251,9 +273,9 @@ için gruplar yalnızca aynı yolda açılmış projelerle eşleşir.
 
 **Terminalde**
 
-| Ne yapar | Kısayol |
-|---|---|
-| Seçimi kopyala | Ctrl+C (seçim varken) / Ctrl+Shift+C / sağ tık |
-| Çalışan işi kes | Ctrl+C (seçim yokken) |
-| Yapıştır | Ctrl+V |
-| Sekmeyi kapat | Orta tık ya da × |
+| Ne yapar | Windows | macOS |
+|---|---|---|
+| Seçimi kopyala | Ctrl+C (seçim varken) / Ctrl+Shift+C / sağ tık | ⌘C / sağ tık |
+| Çalışan işi kes | Ctrl+C (seçim yokken) | Ctrl+C |
+| Yapıştır | Ctrl+V | ⌘V |
+| Sekmeyi kapat | Orta tık ya da × | Orta tık ya da × |

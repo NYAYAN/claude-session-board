@@ -1,5 +1,5 @@
-//! Gömülü terminal: bir oturumu `claude --resume <id>` ile sözde terminalde (Windows'ta ConPTY)
-//! çalıştırır. Çıktı ön yüze kanal (Channel) ile akar, girdi/boyut komutlarla gelir.
+//! Gömülü terminal: bir oturumu `claude --resume <id>` ile sözde terminalde (Windows'ta ConPTY,
+//! macOS'ta Unix PTY) çalıştırır. Çıktı ön yüze kanal (Channel) ile akar, girdi/boyut komutlarla gelir.
 //!
 //! Ön koşul: bağımsız Claude Code CLI kurulu ve giriş yapılmış olmalı. Masaüstü uygulamanın
 //! kendi içindeki kopyası kullanılmaz (oturum açmayı masaüstü uygulama sağlıyor).
@@ -81,6 +81,8 @@ pub fn open(app: &AppHandle, args: OpenArgs, channel: Channel<PtyEvent>) -> Resu
     }
     cmd.cwd(&cwd);
     scrub_host_env(&mut cmd);
+    #[cfg(unix)]
+    terminal_env(&mut cmd);
 
     let pair = native_pty_system()
         .openpty(PtySize {
@@ -220,19 +222,110 @@ fn take_utf8(pending: &mut Vec<u8>) -> String {
 
 /// Bağımsız Claude CLI: önce PATH, sonra resmi yükleyicinin (`~\.local\bin`) ve npm'in yerleri.
 /// Son ikisi, SessionBoard kurulumdan ÖNCE açıldıysa PATH'i eski kalacağı için de gerekir.
+/// macOS'ta PATH kullanıcının kabuğundan gelir (bkz. `shell_path`); npm yerine eski yerel kurulum
+/// (`~/.claude/local`) ve Homebrew'un klasörlerine bakılır.
 fn find_claude() -> Option<PathBuf> {
-    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
+    #[cfg(windows)]
+    let (path, names) = (std::env::var_os("PATH"), ["claude.exe", "claude.cmd"].as_slice());
+    #[cfg(unix)]
+    let (path, names) = (
+        shell_path().cloned().or_else(|| std::env::var_os("PATH")),
+        ["claude"].as_slice(),
+    );
+    let mut dirs: Vec<PathBuf> = path
         .map(|p| std::env::split_paths(&p).collect())
         .unwrap_or_default();
-    if let Some(home) = std::env::var_os("USERPROFILE") {
-        dirs.push(PathBuf::from(home).join(".local").join("bin"));
+    let home = crate::sessions::home_dir();
+    if let Some(home) = &home {
+        dirs.push(home.join(".local").join("bin"));
     }
+    #[cfg(windows)]
     if let Some(appdata) = std::env::var_os("APPDATA") {
         dirs.push(PathBuf::from(appdata).join("npm"));
     }
+    #[cfg(unix)]
+    {
+        if let Some(home) = &home {
+            dirs.push(home.join(".claude").join("local"));
+        }
+        dirs.extend(["/opt/homebrew/bin", "/usr/local/bin"].map(PathBuf::from));
+    }
     dirs.iter()
-        .flat_map(|d| ["claude.exe", "claude.cmd"].map(|n| d.join(n)))
+        .flat_map(|d| names.iter().map(move |n| d.join(n)))
         .find(|p| p.is_file())
+}
+
+/// Uygulama açılırken çağrılır: macOS'ta kabuğun PATH'ini arkada sorar, ilk terminal beklemesin.
+pub fn prepare() {
+    #[cfg(unix)]
+    let _ = shell_path();
+}
+
+/// macOS'ta Dock'tan ya da Finder'dan açılan uygulamanın PATH'i yalnız sistem klasörleridir
+/// (`/usr/bin:/bin:/usr/sbin:/sbin`); Homebrew, nvm ve `~/.local/bin` görünmez. Claude ve onun
+/// çalıştırdığı araçlar (git, node, npm…) kullanıcının terminalindeki PATH'i görmeli: PATH bir kez
+/// kullanıcının kabuğuna (`$SHELL -i -l -c`) sorulur. Kabuk 5 sn'de yanıt vermezse ya da başarısız
+/// olursa `None`; o zaman uygulamanın kendi PATH'i kullanılır.
+#[cfg(unix)]
+fn shell_path() -> Option<&'static std::ffi::OsString> {
+    static PATH: std::sync::OnceLock<Option<std::ffi::OsString>> = std::sync::OnceLock::new();
+    PATH.get_or_init(ask_shell_path).as_ref()
+}
+
+#[cfg(unix)]
+const PATH_MARK: &str = "__SESSIONBOARD_PATH__";
+
+#[cfg(unix)]
+fn ask_shell_path() -> Option<std::ffi::OsString> {
+    use std::process::{Command, Stdio};
+    use std::time::Duration;
+
+    let shell = std::env::var_os("SHELL")
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "/bin/zsh".into());
+    // Kabuk açılış dosyaları (.zshrc vb.) çıktıya bir şey yazabilir; PATH işaretlerin arasından alınır.
+    let script = format!("printf '%s%s%s' {PATH_MARK} \"$PATH\" {PATH_MARK}");
+    let mut child = Command::new(shell)
+        .args(["-i", "-l", "-c", &script])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let mut stdout = child.stdout.take()?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut out = String::new();
+        let _ = stdout.read_to_string(&mut out);
+        let _ = tx.send(out);
+    });
+    let out = rx.recv_timeout(Duration::from_secs(5));
+    let _ = child.kill();
+    let _ = child.wait();
+    marked_path(&out.ok()?).map(Into::into)
+}
+
+/// Kabuk çıktısında iki işaretin arasındaki PATH.
+#[cfg(unix)]
+fn marked_path(out: &str) -> Option<&str> {
+    let start = out.find(PATH_MARK)? + PATH_MARK.len();
+    let len = out[start..].find(PATH_MARK)?;
+    Some(&out[start..start + len]).filter(|p| !p.is_empty())
+}
+
+/// macOS: Claude'un kullanıcının terminalindeki gibi çalışması için PATH (bkz. `shell_path`), renk ve
+/// karakter kodlaması. Dock'tan açılan uygulamada TERM ve LANG hiç yoktur; LANG yoksa Claude'un
+/// çalıştırdığı araçlar Türkçe karakterleri bozabilir.
+#[cfg(unix)]
+fn terminal_env(cmd: &mut CommandBuilder) {
+    if let Some(path) = shell_path() {
+        cmd.env("PATH", path);
+    }
+    cmd.env("TERM", "xterm-256color");
+    cmd.env("COLORTERM", "truecolor");
+    if ["LANG", "LC_ALL", "LC_CTYPE"].iter().all(|k| std::env::var_os(k).is_none()) {
+        cmd.env("LANG", "en_US.UTF-8");
+    }
 }
 
 fn command_for(claude: &Path) -> CommandBuilder {
@@ -293,21 +386,31 @@ mod tests {
         assert!(pending.is_empty());
     }
 
-    /// ConPTY uçtan uca: süreç çıktısı okunur ve süreç bitip PTY kapatılınca okuyucu EOF alır
-    /// (open() içindeki bekleme iş parçacığının yaptığı gibi). ConPTY açılışta imleç konumunu sorar
-    /// (ESC[6n) ve yanıt gelene kadar süreci bekletir; uygulamada xterm.js yanıtlar, burada test.
-    /// Hiçbir adım sonsuza kadar beklemez: takılırsa 15 sn'de başarısız olur.
-    #[cfg(windows)]
+    /// Sözde terminal uçtan uca (Windows'ta ConPTY, macOS'ta Unix PTY): süreç çıktısı okunur ve
+    /// süreç bitip PTY kapatılınca okuyucu EOF alır (open() içindeki bekleme iş parçacığının yaptığı
+    /// gibi). ConPTY açılışta imleç konumunu sorar (ESC[6n) ve yanıt gelene kadar süreci bekletir;
+    /// uygulamada xterm.js yanıtlar, burada test. Hiçbir adım sonsuza kadar beklemez: takılırsa
+    /// 15 sn'de başarısız olur.
     #[test]
-    fn conpty_ciktiyi_okur_ve_kapanir() {
+    fn pty_ciktiyi_okur_ve_kapanir() {
         use std::sync::mpsc;
         use std::time::Duration;
 
         let pair = native_pty_system()
             .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
             .unwrap();
-        let mut cmd = CommandBuilder::new("cmd.exe");
-        cmd.args(["/d", "/c", "echo", "sessionboard-pty-ok"]);
+        #[cfg(windows)]
+        let cmd = {
+            let mut cmd = CommandBuilder::new("cmd.exe");
+            cmd.args(["/d", "/c", "echo", "sessionboard-pty-ok"]);
+            cmd
+        };
+        #[cfg(unix)]
+        let cmd = {
+            let mut cmd = CommandBuilder::new("/bin/echo");
+            cmd.arg("sessionboard-pty-ok");
+            cmd
+        };
         let mut child = pair.slave.spawn_command(cmd).unwrap();
         drop(pair.slave);
         let reader = pair.master.try_clone_reader().unwrap();
@@ -340,9 +443,62 @@ mod tests {
         drop(master);
         let out = out_rx
             .recv_timeout(Duration::from_secs(15))
-            .expect("okuyucu EOF almadı (ConPTY kapanmadı)");
+            .expect("okuyucu EOF almadı (PTY kapanmadı)");
         assert!(exited_ok);
         assert!(out.contains("sessionboard-pty-ok"), "çıktı: {out:?}");
+    }
+
+    /// Kabuğun açılışta yazdıkları (karşılama, uyarı) PATH'e karışmaz; işaret yoksa ya da PATH
+    /// boşsa sonuç yok.
+    #[cfg(unix)]
+    #[test]
+    fn kabuk_ciktisindan_path_ayiklanir() {
+        let out = format!("Merhaba!\n{PATH_MARK}/opt/homebrew/bin:/usr/bin{PATH_MARK}");
+        assert_eq!(marked_path(&out), Some("/opt/homebrew/bin:/usr/bin"));
+        assert_eq!(marked_path("/usr/bin"), None);
+        assert_eq!(marked_path(&format!("{PATH_MARK}{PATH_MARK}")), None);
+        assert_eq!(marked_path(&format!("{PATH_MARK}/usr/bin")), None);
+    }
+
+    /// Gerçek kabuk sorulur: PATH gelir ve en azından sistem klasörlerini içerir.
+    #[cfg(unix)]
+    #[test]
+    fn kabugun_path_i_okunur() {
+        let path = shell_path().expect("kabuk PATH vermedi");
+        assert!(
+            std::env::split_paths(path).any(|d| d == Path::new("/usr/bin")),
+            "PATH: {path:?}"
+        );
+    }
+
+    /// Bilgisayardaki Claude CLI ile duman testi (CLI kurulu olmalı): bulunur ve uygulamanın
+    /// verdiği ortamla sözde terminalde çalışır. Dock'tan açılışı denemek için:
+    /// `env -i HOME=$HOME SHELL=$SHELL PATH=/usr/bin:/bin cargo test claude_cli -- --ignored`.
+    #[cfg(unix)]
+    #[test]
+    #[ignore]
+    fn claude_cli_calisir() {
+        let claude = find_claude().expect("Claude CLI bulunamadı");
+        let pair = native_pty_system()
+            .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
+            .unwrap();
+        let mut cmd = command_for(&claude);
+        cmd.arg("--version");
+        terminal_env(&mut cmd);
+        let mut child = pair.slave.spawn_command(cmd).unwrap();
+        drop(pair.slave);
+        // Okuma süreçle eş zamanlı: macOS süreç bitince okunmamış PTY çıktısını atar.
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        let out = std::thread::spawn(move || {
+            let mut out = Vec::new();
+            let _ = reader.read_to_end(&mut out);
+            String::from_utf8_lossy(&out).into_owned()
+        });
+        assert!(child.wait().unwrap().success());
+        drop(pair.master);
+        let out = out.join().unwrap();
+        println!("{} → {}", claude.display(), out.trim());
+        assert!(out.contains("Claude Code"), "çıktı: {out:?}");
     }
 
     #[test]

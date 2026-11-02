@@ -1,12 +1,16 @@
 // Gömülü terminal sekmeleri: oturumu `claude --resume` ile SessionBoard içinde sürdürür.
-// Sözde terminal (ConPTY) Rust tarafındadır (src-tauri/src/pty.rs); burada xterm.js + sekmeler +
-// ağaç ile terminal arasındaki bölücü. app.js bunu `SessionTerminals.init(...)` ile bağlar.
+// Sözde terminal (Windows'ta ConPTY, macOS'ta Unix PTY) Rust tarafındadır (src-tauri/src/pty.rs);
+// burada xterm.js + sekmeler + ağaç ile terminal arasındaki bölücü. app.js bunu
+// `SessionTerminals.init(...)` ile bağlar.
 window.SessionTerminals = (() => {
   'use strict';
 
   const { invoke, Channel } = window.__TAURI__.core;
   const MIN_WINDOW_WIDTH = 1180;
-  const INSTALL_CMD = 'irm https://claude.ai/install.ps1 | iex';
+  const IS_MAC = /Mac/.test(navigator.platform);
+  const INSTALL_CMD = IS_MAC
+    ? 'curl -fsSL https://claude.ai/install.sh | bash'
+    : 'irm https://claude.ai/install.ps1 | iex';
 
   const tabsEl = document.getElementById('term-tabs');
   const bodyEl = document.getElementById('term-body');
@@ -63,13 +67,14 @@ window.SessionTerminals = (() => {
     bodyEl.append(el);
 
     const term = new window.Terminal({
-      fontFamily: '"Cascadia Mono", "Cascadia Code", Consolas, monospace',
+      fontFamily: IS_MAC ? '"SF Mono", Menlo, Monaco, monospace' : '"Cascadia Mono", "Cascadia Code", Consolas, monospace',
       fontSize: 13,
       lineHeight: 1.15,
       cursorBlink: true,
       scrollback: 5000,
       theme: THEME,
-      windowsPty: { backend: 'conpty' },
+      // ConPTY'ye özgü satır kaydırma ayarları; macOS'un PTY'si için gerekmez.
+      ...(IS_MAC ? {} : { windowsPty: { backend: 'conpty' } }),
     });
     const fit = new window.FitAddon.FitAddon();
     term.loadAddon(fit);
@@ -136,10 +141,22 @@ window.SessionTerminals = (() => {
     return tab;
   }
 
-  /** Kopyala/yapıştır kısayolları. Ctrl+C seçim yokken Claude'a gider (kesme). */
+  /**
+   * Kopyala/yapıştır kısayolları. Ctrl+C seçim yokken Claude'a gider (kesme).
+   * macOS'ta ⌘C kopyalar, ⌘V yapıştırır; Ctrl+C her zaman Claude'a gider.
+   */
   function handleKey(tab, e) {
     if (e.type !== 'keydown') return true;
     const key = e.key.toLowerCase();
+    if (IS_MAC) {
+      if (e.metaKey && key === 'c') {
+        e.preventDefault();
+        copySelection(tab);
+        return false;
+      }
+      // ⌘V: uygulama menüsündeki Yapıştır, xterm'e yerleşik yapıştırma olayını gönderir.
+      return !(e.metaKey && key === 'v');
+    }
     if (e.ctrlKey && !e.altKey && key === 'c' && (e.shiftKey || tab.term.hasSelection())) {
       e.preventDefault();
       copySelection(tab);
@@ -218,7 +235,7 @@ window.SessionTerminals = (() => {
     if (err === 'CLI_NOT_FOUND') {
       t.write('\x1b[33mClaude CLI bulunamadı.\x1b[0m\r\n\r\n');
       t.write('Terminalde çalışmak için bağımsız Claude Code CLI gerekir (masaüstü uygulamanın\r\n');
-      t.write('kendi kopyası kullanılamaz). Windows Terminal ya da PowerShell\'de bir kez çalıştır:\r\n\r\n');
+      t.write(`kendi kopyası kullanılamaz). ${IS_MAC ? 'Terminal uygulamasında' : 'Windows Terminal ya da PowerShell\'de'} bir kez çalıştır:\r\n\r\n`);
       t.write(`    \x1b[1m${INSTALL_CMD}\x1b[0m\r\n\r\n`);
       t.write('Ardından \x1b[1mclaude\x1b[0m yazıp giriş yap, \x1b[1m/exit\x1b[0m ile çık.\r\n');
       t.write('Sonra bu oturuma tekrar tıkla.\r\n');
