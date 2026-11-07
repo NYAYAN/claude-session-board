@@ -14,6 +14,8 @@
   const LINK_PREFIX = 'claude://claude.ai/epitaxy/';
   // "Gruba taşı" menüsünde ilk bakışta gösterilen grup sayısı; kalanlar "Daha fazla" ile açılır.
   const MENU_GROUP_LIMIT = 5;
+  // "Son oturumlar" şeridinde ilk bakışta gösterilen oturum sayısı; "Daha fazla" her basışta bu kadar ekler.
+  const RECENT_STEP = 5;
   // macOS'ta kısayollar Ctrl değil ⌘ ile (Ctrl + tık orada sağ tık sayılır).
   const IS_MAC = /Mac/.test(navigator.platform);
   const MOD = IS_MAC ? '⌘' : 'Ctrl';
@@ -76,6 +78,8 @@
   let pointerDown = false;
   let pendingRender = false;
 
+  const sideEl = document.getElementById('side');
+  const recentEl = document.getElementById('recent');
   const treeEl = document.getElementById('tree');
   const searchEl = document.getElementById('search');
   const statusEl = document.getElementById('status');
@@ -92,6 +96,7 @@
   const ICONS = {
     chevron: '<svg viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     folder: '<svg viewBox="0 0 16 16"><path d="M1.75 4.25c0-.69.56-1.25 1.25-1.25h3.1l1.5 1.5H13c.69 0 1.25.56 1.25 1.25v6c0 .69-.56 1.25-1.25 1.25H3c-.69 0-1.25-.56-1.25-1.25z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
+    clock: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 4.75V8l2.25 1.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     plus: '<svg viewBox="0 0 16 16"><path d="M8 3.25v9.5M3.25 8h9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
     close: '<svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
     star: '<svg viewBox="0 0 16 16"><path d="M8 1.9l1.8 3.75 4.1.55-3 2.85.75 4.05L8 11.15 4.35 13.1l.75-4.05-3-2.85 4.1-.55z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
@@ -116,6 +121,8 @@
         showHidden: false,
         favoritesOnly: false,
         alwaysOnTop: false,
+        recentCollapsed: false,
+        recentCount: RECENT_STEP,
         tipDismissed: false,
         terminalWarned: false,
         sideWidth: 0,
@@ -267,6 +274,26 @@
   }
 
   /**
+   * Son oturumlar şeridine girebilecek oturumlar, son etkinliğe göre (gelen liste öyle sıralı).
+   * Ağaçta görünen klasörlerden seçilir (gizli klasörler ve favori süzgecinin dışındakiler girmez);
+   * arşivlenmişler hiç girmez. Kaçının gösterileceğine şerit karar verir (bkz. recentLimit).
+   */
+  function recentSessions() {
+    const shown = new Map(currentModel.map((ws) => [ws.key, ws]));
+    const out = [];
+    for (const s of sessions) {
+      const ws = shown.get(resolveKey(s.workspaceKey));
+      if (ws && !s.archived) out.push({ s, ws });
+    }
+    return out;
+  }
+
+  /** Şeritte gösterilen oturum sayısı: "Daha fazla" ile artar, "Daha az" ile RECENT_STEP'e döner. */
+  function recentLimit() {
+    return Math.max(RECENT_STEP, Math.floor(Number(state.prefs.recentCount)) || 0);
+  }
+
+  /**
    * Elle verilen sıraya göre dizer. Sırada olmayanlar (yeni oturumlar, menüyle taşınanlar) en üstte
    * kalır ve kendi aralarında son etkinliğe göre dizilir (gelen liste zaten öyle sıralı, sort kararlı).
    */
@@ -310,6 +337,8 @@
     if (currentModel.length === 0) frag.append(renderEmpty(searching));
     for (const ws of currentModel) frag.append(renderWorkspace(ws, searching));
 
+    // Ararken şerit gizlenir: aramayla ilgisi olmayan oturumlar sonuçların üstünde durmasın.
+    renderRecent(searching ? [] : recentSessions());
     treeEl.replaceChildren(frag);
     treeEl.scrollTop = scroll;
     favToggleBtn.classList.toggle('on', !!state.prefs.favoritesOnly);
@@ -335,6 +364,69 @@
 
   function hasAnyGroup() {
     return Object.values(state.workspaces).some((w) => isObj(w) && Array.isArray(w.groups) && w.groups.length > 0);
+  }
+
+  /**
+   * "Son oturumlar" şeridi: ağacın dışında durur, ağaçla birlikte kaymaz. Satırlar ağaçtaki oturum
+   * satırlarıdır (aç düğmeleri, seçim, sağ tık menüsü aynı) ama taşıma ve sıralama yalnız ağaçta.
+   * "Daha fazla" ile uzayan liste kendi içinde kayar; başlık ve düğmeler yerinde kalır.
+   */
+  function renderRecent(all) {
+    const scroll = recentEl.querySelector('.recent-list')?.scrollTop ?? 0;
+    recentEl.hidden = all.length === 0;
+    if (all.length === 0) {
+      recentEl.replaceChildren();
+      return;
+    }
+    const open = !state.prefs.recentCollapsed;
+    const head = el('div', 'row recent-row');
+    head.dataset.kind = 'recent';
+    head.setAttribute('role', 'treeitem');
+    head.setAttribute('aria-expanded', String(open));
+    head.title = 'Son etkinliği en yeni oturumlar';
+    const clock = svg('clock');
+    clock.classList.add('clock');
+    head.append(chevron(open), clock, span('name', 'Son oturumlar'));
+    if (!open) {
+      recentEl.replaceChildren(head);
+      return;
+    }
+
+    const limit = recentLimit();
+    const list = el('div', 'recent-list');
+    list.setAttribute('role', 'group');
+    for (const { s, ws } of all.slice(0, limit)) {
+      const row = renderSession(s, ws.key, 1);
+      row.draggable = false;
+      row.querySelector('.name').after(span('origin', ws.name));
+      list.append(row);
+    }
+    const parts = [head, list];
+    if (all.length > RECENT_STEP) {
+      const bar = el('div', 'row recent-more');
+      if (all.length > limit) {
+        const more = span('link-btn', 'Daha fazla', 'button');
+        more.dataset.action = 'recent-more';
+        more.title = `${RECENT_STEP} oturum daha göster`;
+        bar.append(more);
+      }
+      if (limit > RECENT_STEP) {
+        const less = span('link-btn', 'Daha az', 'button');
+        less.dataset.action = 'recent-less';
+        less.title = `Yalnız son ${RECENT_STEP} oturumu göster`;
+        bar.append(less);
+      }
+      parts.push(bar);
+    }
+    recentEl.replaceChildren(...parts);
+    list.scrollTop = scroll;
+  }
+
+  function setRecentCount(n) {
+    state.prefs.recentCount = n;
+    commit();
+    // Liste kendi içinde kayıyorsa eklenen oturumlar görünsün.
+    recentEl.querySelector('.recent-list')?.lastElementChild?.scrollIntoView({ block: 'nearest' });
   }
 
   function renderWorkspace(ws, searching) {
@@ -545,7 +637,7 @@
 
   /** Göreli zamanları DOM'u değiştirmeden tazeler. */
   function refreshTimes() {
-    for (const t of treeEl.querySelectorAll('.time[data-at]')) t.textContent = ago(Number(t.dataset.at));
+    for (const t of sideEl.querySelectorAll('.time[data-at]')) t.textContent = ago(Number(t.dataset.at));
   }
 
   // ---------------------------------------------------------------- yardımcılar (DOM)
@@ -730,7 +822,7 @@
       clearTimeout(flashTimer);
     }
     // Ağacı yeniden çizmeden yalnız ilgili düğmeleri güncelle (tıklama/hover bozulmasın).
-    for (const b of treeEl.querySelectorAll('[data-action="open-claude"]')) {
+    for (const b of sideEl.querySelectorAll('[data-action="open-claude"]')) {
       b.classList.toggle('busy', b.closest('.row')?.dataset.id === openingId);
     }
     renderStatus();
@@ -1366,12 +1458,13 @@
 
   // ---------------------------------------------------------------- seçim
 
-  function visibleSessionIds() {
-    return [...treeEl.querySelectorAll('.row.session')].map((r) => r.dataset.id);
+  function visibleSessionIds(list = treeEl) {
+    return [...list.querySelectorAll('.row.session')].map((r) => r.dataset.id);
   }
 
-  function selectRange(fromId, toId) {
-    const ids = visibleSessionIds();
+  /** list: tıklanan liste (ağaç ya da son oturumlar şeridi); aralık onun sırasıyla seçilir. */
+  function selectRange(fromId, toId, list) {
+    const ids = visibleSessionIds(list);
     let i = ids.indexOf(fromId);
     let j = ids.indexOf(toId);
     if (i < 0 || j < 0) return;
@@ -1388,7 +1481,7 @@
       return;
     }
     if (e.shiftKey && anchorId) {
-      selectRange(anchorId, id);
+      selectRange(anchorId, id, e.currentTarget);
       render();
       return;
     }
@@ -1401,7 +1494,8 @@
 
   // ---------------------------------------------------------------- olaylar: ağaç
 
-  treeEl.addEventListener('click', (e) => {
+  // Tık ve sağ tık ağaçta ve son oturumlar şeridinde aynı; sürükle-bırak yalnız ağaçta.
+  function onRowClick(e) {
     if (e.target.closest('input')) return;
     const row = e.target.closest('.row');
     if (!row) return;
@@ -1414,6 +1508,8 @@
       else if (action === 'hide') toggleHidden(row.dataset.ws);
       else if (action === 'open-terminal') openInTerminal(row.dataset.id);
       else if (action === 'open-claude') openSession(row.dataset.id);
+      else if (action === 'recent-more') setRecentCount(recentLimit() + RECENT_STEP);
+      else if (action === 'recent-less') setRecentCount(RECENT_STEP);
       return;
     }
     switch (row.dataset.kind) {
@@ -1437,13 +1533,16 @@
         commit();
         break;
       }
+      case 'recent':
+        togglePref('recentCollapsed');
+        break;
       case 'session':
         onSessionClick(e, row.dataset.id);
         break;
     }
-  });
+  }
 
-  treeEl.addEventListener('contextmenu', (e) => {
+  function onRowMenu(e) {
     e.preventDefault();
     if (e.target.closest('input')) return;
     const row = e.target.closest('.row');
@@ -1461,9 +1560,16 @@
         anchorId = id;
         render();
       }
-      showMenu(e.clientX, e.clientY, sessionMenu(ws, false, row.closest('.group')?.dataset.dropGroup ?? ''));
+      // Şeritteki satır bir grubun içinde durmaz; grubu atamasından bulunur.
+      const gid = row.closest('.group')?.dataset.dropGroup ?? state.assignments[id] ?? '';
+      showMenu(e.clientX, e.clientY, sessionMenu(ws, false, gid));
     }
-  });
+  }
+
+  for (const list of [recentEl, treeEl]) {
+    list.addEventListener('click', onRowClick);
+    list.addEventListener('contextmenu', onRowMenu);
+  }
 
   // Sürükle-bırak: sürükleme sırasında DOM yeniden çizilmez (sürüklenen öğe değişirse
   // tarayıcı sürüklemeyi iptal eder); seçim sınıfları yerinde güncellenir.
@@ -1509,7 +1615,7 @@
       setTimeout(() => ghost.remove(), 0);
     }
     treeEl.classList.add('dragging');
-    for (const r of treeEl.querySelectorAll('.row.session')) r.classList.toggle('selected', selected.has(r.dataset.id));
+    for (const r of sideEl.querySelectorAll('.row.session')) r.classList.toggle('selected', selected.has(r.dataset.id));
   });
 
   /**
@@ -1671,6 +1777,8 @@
     endGroupDrag();
   });
   treeEl.addEventListener('scroll', closeMenu);
+  // Şeridin listesi her çizimde yeniden kurulur; kaydırması şeridin kendisinde yakalanır.
+  recentEl.addEventListener('scroll', closeMenu, true);
 
   // ---------------------------------------------------------------- olaylar: genel
 

@@ -18,6 +18,17 @@ aynı projenin oturumlarını onlarca parçaya bölerdi. Klasörün görünen ad
 sağ tık → *Yeniden adlandır* ile değişir, boş bırakmak klasör adına döndürür. Klasör satırına tıklamak
 klasörü daraltır ya da açar.
 
+**Son oturumlar.** Ağacın üstünde, son etkinliği en yeni beş oturum hangi klasörde olurlarsa olsunlar
+ayrı bir şeritte durur. Şerit ağaçla birlikte kaymaz: uzun bir ağacın neresinde olursanız olun üzerinde
+çalıştığınız oturumlar bir tık uzaktadır. Her satır oturumun klasörünü de yazar. Altındaki *Daha fazla*
+beş oturum daha gösterir; *Daha az* yalnızca son beşe döner, sonradan açılanları gizler. Liste
+pencerenin yarısını geçerse şeridin içinde kayar, başlık ve bu düğmeler yerinde kalır. Aç düğmeleri,
+seçim ve sağ tık menüsü ağaçtakiyle aynıdır; Shift ile aralık şeridin kendi sırasıyla seçilir. Taşımak
+ve sıralamak ağaçta yapılır; şerit her zaman son etkinliğe göre dizilir. Arşivlenmiş oturumlar ve gizli
+klasörlerin oturumları şeride girmez, favori süzgeci açıksa yalnızca favori klasörlerin oturumları
+girer. Ararken şerit gizlenir. Başlığına tıklamak şeridi daraltır. Daraltma ve kaç oturum gösterildiği
+hatırlanır.
+
 **Gruplar.** Klasör satırındaki **+** (ya da sağ tık → *Grup ekle*) yeni bir grup açar ve adını hemen
 düzenletir. Gruba atanmamış oturumlar *Grupsuz*'da durur. *Grupsuz* yalnızca klasörde en az bir grup
 varken görünür; hiç grubu olmayan bir klasörde oturumlar doğrudan klasörün altında listelenir. Grubu

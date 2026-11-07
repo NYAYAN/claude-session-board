@@ -62,6 +62,8 @@ değişmez.
 
 ### Ve dahası
 
+- **Son oturumlar:** son etkinliği en yeni beş oturum, klasörleri ne olursa olsun ağacın üstünde sabit
+  durur; ağaç kaysa da kaybolmaz. *Daha fazla* ile beşer beşer uzar, *Daha az* ile son beşe döner.
 - **Arama:** Ctrl+F (macOS'ta ⌘F); Türkçe karakterlere duyarsız (`cetele` → *Çetele*), başlıkta ve dal adında arar.
 - **Klasör birleştirme:** projeyi başka bir klasöre taşıdıysanız eski klasörde kalan oturumları yenisinin
   altında toplayın; istediğinizde ayırın.

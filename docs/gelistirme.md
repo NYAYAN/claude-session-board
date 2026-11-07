@@ -100,7 +100,7 @@ cmd /c '"<Visual Studio klasörü>\VC\Auxiliary\Build\vcvars64.bat" && npm run b
 ```
 src/                        arayüz: paketleyicisiz düz JS
   index.html
-  app.js                      ağaç, gruplar, sürükle-bırak, menüler, güncelleme bildirimi
+  app.js                      ağaç, son oturumlar şeridi, gruplar, sürükle-bırak, menüler, güncelleme bildirimi
   terminal.js                 terminal sekmeleri (xterm.js), ağaç/terminal bölücüsü
   styles.css
   vendor/                     xterm.js; npm run vendor üretir, depoda yok
@@ -150,6 +150,12 @@ açılıyor ama kaydı tümden kapatıyor: aksi hâlde ilk tıklamada boş durum
 sırayı diziye yazar; görünmeyen (arşivlenmiş) oturumlar eski sıralarıyla sona eklenir, böylece arşiv
 gizliyken yapılan bir sıralama onları yerinden oynatmaz. Başka gruba taşınan oturum klasördeki bütün
 dizilerden çıkarılır.
+
+**Son oturumlar şeridi ağacın dışında.** Şerit `#tree`'nin içinde `position: sticky` ile de üstte
+tutulabilirdi, ama o zaman satırları ağacın sürükle-bırak hedeflerine, Shift aralığına ve elle sıranın
+hesabına (ekranda görünen oturum sırası) karışırdı: aynı oturum iki kez sayılır, bırakma "şunun arkasına"
+derken şeritteki satırı bulurdu. Ayrı bir öğe (`#recent`) olunca tık ve sağ tık iki listeye ayrı ayrı
+bağlanıyor, sürükle-bırak yalnızca ağaçta kalıyor.
 
 **ConPTY imleç sorusu.** ConPTY açılışta imleç konumunu sorar (`ESC[6n`) ve yanıt gelene kadar süreci
 bekletir. Soru, terminalin kimliği arayüze ulaşmadan gelebiliyor; xterm'in yanıtı ve erken tuşlar kimlik
