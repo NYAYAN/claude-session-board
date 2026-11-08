@@ -80,6 +80,9 @@ değişmez.
 
 ### Ve dahası
 
+- **Çalışan ve bekleyen oturumlar:** Claude'un şu an çalıştığı oturumun yanında yanıp sönen yeşil,
+  sizden yanıt ya da izin beklediği oturumun yanında turuncu nokta durur. Daraltılmış klasör ve
+  grupların başlığında da içlerindekileri gösterir.
 - **Tümünü daralt / genişlet:** üst çubukta, favori ve yenile düğmelerinin yanında; tek tıkla bütün
   ağacı katlar ya da açar.
 - **Arama:** Ctrl+F (macOS'ta ⌘F); Türkçe karakterlere duyarsız (`cetele` → *Çetele*), başlıkta ve dal adında arar.

@@ -33,6 +33,15 @@ dizilir. Arşivlenmiş oturumlar ve gizli klasörlerin oturumları şeride girme
 yalnızca favori klasörlerin oturumları girer. Ararken şerit gizlenir. Başlığına tıklamak şeridi daraltır.
 Daraltmalar, gruplama ve kaç oturum gösterildiği hatırlanır.
 
+**Çalışan ve sizi bekleyen oturumlar.** Claude'un o anda üzerinde çalıştığı (yanıt yazıyor, araç
+kullanıyor) oturumun adının solunda yanıp sönen yeşil bir nokta durur; sizden yanıt ya da izin
+bekleyen oturumda nokta turuncudur. Claude'un penceresindeki oturumlar da, terminalde
+`claude --resume` ile sürdürülenler de sayılır. Boştaki oturumlara nokta konmaz: Claude açtığınız her
+oturumun işlemini, kapatana ya da oturumu arşivleyene kadar arka planda boşta tutuyor; bu bir şey
+söylemiyor. Klasör ya da grup daraltılmışsa nokta onun başlığında, sayının yanında görünür; içinde
+sizi bekleyen oturum varsa turuncu olur, ipucu kaç oturumun beklediğini ve çalıştığını söyler. Durum
+listeyle birlikte, 20 saniyede bir tazelenir.
+
 **Gruplar.** Klasör satırındaki **+** (ya da sağ tık → *Grup ekle*) yeni bir grup açar ve adını hemen
 düzenletir. Gruba atanmamış oturumlar *Grupsuz*'da durur. *Grupsuz* yalnızca klasörde en az bir grup
 varken görünür; hiç grubu olmayan bir klasörde oturumlar doğrudan klasörün altında listelenir. Grubu
@@ -211,6 +220,7 @@ hatayı yazar. v0.1.0'da güncelleyici yoktur; ondan bir kez elle geçmek gereki
 | Hesap | Birden çok hesap klasörü varsa en son etkinliğin olduğu hesap gösterilir: Claude'un hangi hesapla açık olduğu dosyalardan bilinemiyor |
 | Klasör | Kaydın `originCwd` alanı; worktree oturumları reponun köküne bağlanır |
 | Son etkinlik | Masaüstü kaydı ile konuşma dosyasındaki (`~\.claude\projects\…\<cliSessionId>.jsonl`) son mesajın zamanının büyüğü. Oturum terminalde sürdürülünce masaüstünün kaydı güncellenmez, konuşma dosyası güncellenir. Dosyanın değiştirilme zamanına bakılmaz: Claude kapanmış konuşmaların sonuna da sohbet dışı satırlar ekliyor |
+| Açık oturumlar | `~\.claude\sessions\<pid>.json`: her Claude Code işlemi çalıştığı sürece bu dosyayı tutar; içindeki `hostSessionId` (masaüstü kimliği) ya da `sessionId` (konuşma kimliği) oturumla eşleşir, `status` `busy`/`waiting`/`idle`; yalnız ilk ikisine nokta konur. İşlem çökünce dosya geride kalabildiği için pid'in yaşadığına da bakılır |
 | Oturumu açma | `claude://claude.ai/epitaxy/<oturum-id>` → kayıtlı Claude protokol işleyicisi (Windows'ta Claude.exe, macOS'ta Claude.app) |
 
 ### Kayıtların yeri

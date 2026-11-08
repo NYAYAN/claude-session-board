@@ -8,6 +8,7 @@
   --hover: rgba(31, 30, 29, 0.055);
   --selected: rgba(201, 100, 66, 0.15);
   --accent: #c96442;
+  --run: #2f9e44;
   --danger: #b4321f;
   --drop: rgba(201, 100, 66, 0.1);
   --shadow: 0 10px 28px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08);
@@ -25,6 +26,7 @@
     --hover: rgba(255, 255, 255, 0.06);
     --selected: rgba(217, 119, 87, 0.24);
     --accent: #d97757;
+    --run: #4cc35e;
     --danger: #e5604d;
     --drop: rgba(217, 119, 87, 0.14);
     --shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
@@ -294,6 +296,21 @@ header {
 }
 
 .session.term-active { box-shadow: inset 2px 0 0 var(--accent); }
+
+/* Claude'un çalıştığı (yeşil) ya da sizi beklediği (turuncu) oturum; daraltılmış klasör/grup
+   başlığında da içindekiler için. Oturum satırında sol boşluğa taşar, adlar hizalı kalır. */
+.run-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--run);
+}
+.session .run-dot { margin-left: -12px; }
+.run-dot.waiting { background: var(--accent); }
+.run-dot.busy { animation: run-pulse 1.4s ease-in-out infinite; }
+@keyframes run-pulse { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .run-dot.busy { animation: none; } }
 
 /* oturum sürükle-bırak sıralama göstergesi (sürükleme sırasında terminal çizgisinin yerine geçer) */
 .session.drop-before { box-shadow: inset 0 2px 0 var(--accent); }

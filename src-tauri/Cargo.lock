@@ -3441,6 +3441,7 @@ dependencies = [
 name = "sessionboard"
 version = "0.3.2"
 dependencies = [
+ "libc",
  "portable-pty",
  "serde",
  "serde_json",
@@ -3451,6 +3452,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

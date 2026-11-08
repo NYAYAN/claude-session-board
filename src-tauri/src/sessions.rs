@@ -57,6 +57,10 @@ pub struct SessionInfo {
     pub archived: bool,
     pub created_at: f64,
     pub last_activity_at: f64,
+    /// Oturum şu an bir Claude Code işleminde açıksa durumu: `busy` (çalışıyor), `waiting`
+    /// (kullanıcıdan yanıt/izin bekliyor) ya da `idle` (boşta). Açık değilse `None`.
+    /// Bkz. `running_sessions`.
+    pub running: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -230,12 +234,99 @@ pub fn list(custom: Option<&str>) -> Result<SessionList, String> {
             s.last_activity_at = s.last_activity_at.max(*t);
         }
     }
+    let running = running_sessions();
+    for s in &mut sessions {
+        s.running = running
+            .get(&s.id)
+            .or_else(|| s.cli_session_id.as_ref().and_then(|c| running.get(c)))
+            .cloned();
+    }
     sessions.sort_by(|a, b| b.last_activity_at.total_cmp(&a.last_activity_at));
     Ok(SessionList {
         sessions,
         source,
         skipped,
     })
+}
+
+/// `~/.claude/sessions/<pid>.json`'dan gerekenler.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawProcess {
+    pid: u32,
+    #[serde(default)]
+    session_id: Option<String>,
+    #[serde(default)]
+    host_session_id: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+}
+
+/// Şu an açık oturumlar: kimlik → durum (`busy`/`waiting`/`idle`). Her Claude Code işlemi
+/// (masaüstünün açtıkları da, terminalde `claude --resume` ile sürdürülenler de) çalıştığı sürece
+/// `~/.claude/sessions/<pid>.json` dosyasını tutar ve durumunu oraya yazar. Anahtar hem
+/// `hostSessionId` (masaüstü kimliği, `local_…`) hem `sessionId` (konuşma kimliği); oturum
+/// hangisiyle açıldıysa onunla eşleşir.
+///
+/// Bu da Claude'un belgelenmemiş biçimi; değişirse yalnız göstergeler kaybolur. İşlem çökerse
+/// dosya geride kalabildiği için pid'in hâlâ yaşadığına bakılır.
+fn running_sessions() -> HashMap<String, String> {
+    let mut running = HashMap::new();
+    let Some(home) = home_dir() else {
+        return running;
+    };
+    let Ok(entries) = fs::read_dir(home.join(".claude").join("sessions")) else {
+        return running;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.extension().is_some_and(|e| e == "json") {
+            continue;
+        }
+        let Some(raw) = fs::read(&path)
+            .ok()
+            .and_then(|b| serde_json::from_slice::<RawProcess>(&b).ok())
+        else {
+            continue;
+        };
+        if !process_alive(raw.pid) {
+            continue;
+        }
+        let status = raw.status.unwrap_or_else(|| "idle".into());
+        for id in [raw.host_session_id, raw.session_id].into_iter().flatten() {
+            running.insert(id, status.clone());
+        }
+    }
+    running
+}
+
+#[cfg(unix)]
+fn process_alive(pid: u32) -> bool {
+    let Ok(pid) = libc::pid_t::try_from(pid) else {
+        return false;
+    };
+    // 0 sinyali bir şey göndermez, yalnız işlemin varlığını sınar. EPERM: var ama başkasının.
+    pid > 0
+        && (unsafe { libc::kill(pid, 0) } == 0
+            || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM))
+}
+
+#[cfg(windows)]
+fn process_alive(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return false;
+        }
+        let mut code = 0u32;
+        let ok = GetExitCodeProcess(handle, &mut code) != 0;
+        CloseHandle(handle);
+        ok && code == STILL_ACTIVE as u32
+    }
 }
 
 /// Okunmuş bir konuşma dosyası: boyut, değiştirilme zamanı, son mesajın zamanı.
@@ -435,6 +526,7 @@ fn parse(path: &Path) -> Option<SessionInfo> {
         archived: raw.is_archived.unwrap_or(false),
         created_at: raw.created_at.unwrap_or(0.0),
         last_activity_at: raw.last_activity_at.or(raw.created_at).unwrap_or(0.0),
+        running: None,
     })
 }
 
@@ -596,8 +688,18 @@ mod tests {
             let minutes = (now - s.last_activity_at) / 60_000.0;
             println!("  {minutes:>8.0} dk | {} | {}", s.title, s.workspace);
         }
+        for s in list.sessions.iter().filter(|s| s.running.is_some()) {
+            println!("  açık ({}) | {} | {}", s.running.as_deref().unwrap_or(""), s.title, s.workspace);
+        }
         assert!(!list.sessions.is_empty());
         assert!(list.sessions.iter().all(|s| is_valid_id(&s.id)));
+    }
+
+    #[test]
+    fn yasayan_islem_taninir() {
+        assert!(process_alive(std::process::id()));
+        assert!(!process_alive(0));
+        assert!(!process_alive(u32::MAX));
     }
 
     #[test]

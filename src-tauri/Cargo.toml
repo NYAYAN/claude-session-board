@@ -24,6 +24,13 @@ serde_json = "1"
 # Gömülü terminal: Windows'ta ConPTY üzerinden sözde terminal.
 portable-pty = "0.9"
 
+# Açık oturumların işleminin hâlâ yaşadığını sınamak için.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
+
 [profile.release]
 opt-level = 3
 strip = true

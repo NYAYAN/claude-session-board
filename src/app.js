@@ -15,6 +15,9 @@
   // "Gruba taşı" menüsünde ilk bakışta gösterilen grup sayısı; kalanlar "Daha fazla" ile açılır.
   const MENU_GROUP_LIMIT = 5;
   // "Son oturumlar" şeridinde ilk bakışta gösterilen oturum sayısı; "Daha fazla" her basışta bu kadar ekler.
+  /** Oturumun Claude Code işlemindeki durumu (`~/.claude/sessions`). Yalnız bunlara nokta konur:
+   *  Claude açtığı her oturumun işlemini boşta (`idle`) da açık tutuyor, o bir şey söylemiyor. */
+  const RUN_TITLES = { busy: 'Şu an çalışıyor', waiting: 'Sizden yanıt ya da izin bekliyor' };
   const RECENT_STEP = 5;
   // macOS'ta kısayollar Ctrl değil ⌘ ile (Ctrl + tık orada sağ tık sayılır).
   const IS_MAC = /Mac/.test(navigator.platform);
@@ -436,7 +439,9 @@
         wsHead.title = ws.path;
         const folder = svg('folder');
         folder.classList.add('folder');
-        wsHead.append(chevron(wsOpen), folder, span('name', ws.name), span('count', String(items.length)));
+        wsHead.append(chevron(wsOpen), folder, span('name', ws.name));
+        if (!wsOpen) appendRunDot(wsHead, items.map((i) => i.s));
+        wsHead.append(span('count', String(items.length)));
         list.append(wsHead);
         if (!wsOpen) continue;
       }
@@ -499,7 +504,9 @@
     if (ws.favorite) fav.classList.add('on');
     const hide = rowButton(ws.hidden ? ICONS.eye : ICONS.eyeOff, ws.hidden ? 'Göster' : 'Gizle', 'hide');
     const add = rowButton(ICONS.plus, 'Grup ekle', 'add-group');
-    row.append(chevron(open), folder, span('name', ws.name), span('count', String(ws.sessions.length)), fav, hide, add);
+    row.append(chevron(open), folder, span('name', ws.name));
+    if (!open) appendRunDot(row, ws.sessions);
+    row.append(span('count', String(ws.sessions.length)), fav, hide, add);
     box.append(row);
     if (!open) return box;
 
@@ -535,7 +542,9 @@
     row.setAttribute('role', 'treeitem');
     row.setAttribute('aria-expanded', String(open));
     row.draggable = !searching && !g.pseudo;
-    row.append(chevron(open), span('name', g.name), span('count', String(g.total ?? g.sessions.length)));
+    row.append(chevron(open), span('name', g.name));
+    if (!open) appendRunDot(row, [...g.sessions, ...(g.subgroups || []).flatMap((c) => c.sessions)]);
+    row.append(span('count', String(g.total ?? g.sessions.length)));
     if (!g.pseudo && !sub) row.append(rowButton(ICONS.plus, 'Alt grup ekle', 'add-subgroup'));
     box.append(row);
 
@@ -573,9 +582,11 @@
       s.cwd,
       'Son etkinlik: ' + fullDate(s.lastActivityAt),
       s.archived ? 'Arşivlenmiş' : '',
+      RUN_TITLES[s.running] || '',
     ].filter(Boolean).join('\n');
     const time = span('time', ago(s.lastActivityAt));
     time.dataset.at = String(s.lastActivityAt);
+    if (RUN_TITLES[s.running]) row.append(runDot(s.running));
     row.append(span('name', s.title || '(başlıksız)'));
     if (inTerminal) {
       const mark = svg('terminal');
@@ -592,6 +603,22 @@
     if (s.id === openingId) openClaude.classList.add('busy');
     row.append(openTerm, openClaude, time);
     return row;
+  }
+
+  /** Çalışan (yeşil, yanıp söner) ya da sizi bekleyen (turuncu) oturumun noktası. */
+  function runDot(status, title) {
+    const dot = el('span', 'run-dot ' + status);
+    dot.title = title || RUN_TITLES[status];
+    return dot;
+  }
+
+  /** Daraltılmış başlıkta, içindeki oturumlar için nokta. Bekleyen varsa o öne çıkar: iş sizde. */
+  function appendRunDot(row, sessions) {
+    const busy = sessions.filter((s) => s.running === 'busy').length;
+    const waiting = sessions.filter((s) => s.running === 'waiting').length;
+    if (busy + waiting === 0) return;
+    const title = [waiting && `${waiting} oturum sizi bekliyor`, busy && `${busy} oturum çalışıyor`].filter(Boolean).join(', ');
+    row.append(runDot(waiting ? 'waiting' : 'busy', title));
   }
 
   function renderTip() {

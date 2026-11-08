@@ -194,6 +194,17 @@ yüzlerce MB olabiliyor ama son mesaj neredeyse hep son 64 KB'ta; bulunamazsa pe
 4 MB'a büyüyor. Sonuç dosyanın boyutu ve değiştirilme zamanıyla saklanıyor (`TAILS`); dosya değişmedikçe
 yeniden okunmuyor.
 
+**Açık oturumlar `~/.claude/sessions`'tan.** Her Claude Code işlemi (masaüstünün açtıkları da,
+terminaldekiler de) çalıştığı sürece `<pid>.json` dosyası tutuyor ve durumunu (`status`: `busy`/`waiting`/`idle`)
+oraya yazıyor. Arayüz yalnız `busy` ve `waiting`'e nokta koyuyor: masaüstü uygulaması açılan her
+oturumun işlemini kapanana kadar `idle` tutuyor, ona da nokta koymak "iş sürüyor" sanılıyordu.
+`sessions::running_sessions` bu dosyaları okuyup hem `hostSessionId` hem `sessionId` ile
+eşliyor; masaüstünde açılan oturum ilkiyle, terminalde `--resume` ile açılan ikincisiyle (konuşma
+kimliği) bulunuyor. İşlem çökerse dosya geride kalabildiği için pid'in yaşadığı sınanıyor: Unix'te
+`kill(pid, 0)`, Windows'ta `OpenProcess` + `GetExitCodeProcess`. Bunun için `libc` ve `windows-sys`
+yalnız kendi platformlarında bağımlılık. Biçim belgelenmemiş; değişirse noktalar kaybolur, liste
+etkilenmez.
+
 **macOS: aynı arama, başka kök.** Kayıtlar `~/Library/Application Support/Claude/claude-code-sessions`
 altında ve düzen Windows'takiyle aynı; `roots_in` Application Support'u `%APPDATA%` gibi tarıyor. Yollar
 `/` ile kalıyor: Windows'taki `/` → `\` çevirisi macOS'ta bütün yolları bozardı, `\` ise orada geçerli
