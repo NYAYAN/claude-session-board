@@ -4,7 +4,8 @@
 
 # SessionBoard
 
-**Claude Code oturumlarınızı klasöre ve gruba ayıran, istediğiniz sırada tutan pencere.**
+**Claude Code oturumlarınızı klasöre ve gruba ayıran, son çalıştıklarınızı hep en üstte tutan,
+kaldığınız yerden terminalde sürdürmenizi sağlayan pencere.**
 
 Windows ve macOS için · Claude masaüstü uygulamasının yanında çalışır · Ücretsiz ve açık kaynak
 
@@ -23,6 +24,23 @@ Windows ve macOS için · Claude masaüstü uygulamasının yanında çalışır
 </div>
 
 ## Öne çıkanlar
+
+### Son oturumlar hep en üstte
+
+Ağacın üstündeki sabit **Son oturumlar** şeridi, son etkinliği en yeni beş oturumu klasörleri ne olursa
+olsun gösterir; ağaç kaysa da yerinde kalır. Sıralama oturum dosyasının değişme zamanına değil,
+konuşmadaki **son mesajın** zamanına göre yapılır; böylece Claude'un arka planda dosyaya eklediği
+kayıtlar eski oturumları yanlışlıkla öne çıkarmaz.
+
+- **Daha fazla** listeyi beşer beşer uzatır, **Daha az** son beşe döner.
+- **Grupla** oturumları klasörlerine göre toplar; her klasör grubu ayrı daraltılır, yanındaki
+  simgelerle hepsi birden daraltılıp genişletilir.
+- Şeridin başlığına tıklayınca tümüyle katlanır; tercihleriniz hatırlanır.
+
+<p align="center">
+  <img src="docs/screenshots/recent.png" width="49%" alt="Son oturumlar şeridi: son beş oturum, yanlarında klasör adı ve son etkinlik zamanı; altında Daha fazla">
+  <img src="docs/screenshots/recent-grouped.png" width="49%" alt="Son oturumlar klasöre göre gruplanmış: acme-web, altyapi, daraltılmış mobil-uygulama; başlıkta daralt/genişlet simgeleri ve Grupla">
+</p>
 
 ### Her klasör kendi ağacında
 
@@ -62,9 +80,8 @@ değişmez.
 
 ### Ve dahası
 
-- **Son oturumlar:** son etkinliği en yeni beş oturum, klasörleri ne olursa olsun ağacın üstünde sabit
-  durur; ağaç kaysa da kaybolmaz. *Daha fazla* ile beşer beşer uzar, *Daha az* ile son beşe döner;
-  *Grupla* ile klasörlerine göre toplanır, her klasör grubu ayrı daraltılır.
+- **Tümünü daralt / genişlet:** üst çubukta, favori ve yenile düğmelerinin yanında; tek tıkla bütün
+  ağacı katlar ya da açar.
 - **Arama:** Ctrl+F (macOS'ta ⌘F); Türkçe karakterlere duyarsız (`cetele` → *Çetele*), başlıkta ve dal adında arar.
 - **Klasör birleştirme:** projeyi başka bir klasöre taşıdıysanız eski klasörde kalan oturumları yenisinin
   altında toplayın; istediğinizde ayırın.
@@ -91,7 +108,12 @@ sıralarınız kurulumdan etkilenmez.
 **macOS 11 ve sonrası (Apple Silicon ve Intel):** `SessionBoard_<sürüm>_universal.dmg` dosyasını indirip
 açın, SessionBoard'u **Uygulamalar** klasörüne sürükleyin. Paket Apple tarafından onaylı (notarize)
 olmadığı için ilk açılışta macOS "açılamıyor" der: **Sistem Ayarları › Gizlilik ve Güvenlik**'te en altta
-**Yine de Aç** (*Open Anyway*) düğmesine basın; bu bir kez gerekir.
+**Yine de Aç** (*Open Anyway*) düğmesine basın; bu bir kez gerekir. Ya da Terminal'de karantina
+işaretini kaldırın:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/SessionBoard.app
+```
 
 **Gerekenler.** Claude masaüstü uygulaması; oturum listesi onun kayıtlarından okunur. Kayıtların yeri
 kuruluma göre değişiyor; SessionBoard onu kendisi bulur, bulamazsa *⋯ › Oturum klasörünü seç…* ile
