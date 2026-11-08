@@ -22,12 +22,16 @@ klasörü daraltır ya da açar.
 ayrı bir şeritte durur. Şerit ağaçla birlikte kaymaz: uzun bir ağacın neresinde olursanız olun üzerinde
 çalıştığınız oturumlar bir tık uzaktadır. Her satır oturumun klasörünü de yazar. Altındaki *Daha fazla*
 beş oturum daha gösterir; *Daha az* yalnızca son beşe döner, sonradan açılanları gizler. Liste
-pencerenin yarısını geçerse şeridin içinde kayar, başlık ve bu düğmeler yerinde kalır. Aç düğmeleri,
-seçim ve sağ tık menüsü ağaçtakiyle aynıdır; Shift ile aralık şeridin kendi sırasıyla seçilir. Taşımak
-ve sıralamak ağaçta yapılır; şerit her zaman son etkinliğe göre dizilir. Arşivlenmiş oturumlar ve gizli
-klasörlerin oturumları şeride girmez, favori süzgeci açıksa yalnızca favori klasörlerin oturumları
-girer. Ararken şerit gizlenir. Başlığına tıklamak şeridi daraltır. Daraltma ve kaç oturum gösterildiği
-hatırlanır.
+pencerenin yarısını geçerse şeridin içinde kayar, başlık ve bu düğmeler yerinde kalır. Başlıktaki
+*Grupla* oturumları klasörlerine göre toplar: en yeni etkinliği olan klasör üstte, klasörün adı satırlar
+yerine başlıkta. Hangi oturumların göründüğü değişmez, yalnızca dizilişleri; tekrar basmak düz listeye
+döndürür. Klasör başlığına tıklamak o klasörü şeritte daraltır ve kaç oturumu olduğunu gösterir; ağaçtaki
+klasör açık kalır. Gruplama açıkken *Grupla*'nın solundaki iki simge şeritteki bütün klasör gruplarını
+birden daraltır (içe bakan oklar) ya da açar (dışa bakan oklar); yapacak iş yoksa simge soluk görünür. Aç düğmeleri, seçim ve sağ tık menüsü ağaçtakiyle aynıdır; Shift ile aralık şeritte
+göründüğü sırayla seçilir. Taşımak ve sıralamak ağaçta yapılır; şerit her zaman son etkinliğe göre
+dizilir. Arşivlenmiş oturumlar ve gizli klasörlerin oturumları şeride girmez, favori süzgeci açıksa
+yalnızca favori klasörlerin oturumları girer. Ararken şerit gizlenir. Başlığına tıklamak şeridi daraltır.
+Daraltmalar, gruplama ve kaç oturum gösterildiği hatırlanır.
 
 **Gruplar.** Klasör satırındaki **+** (ya da sağ tık → *Grup ekle*) yeni bir grup açar ve adını hemen
 düzenletir. Gruba atanmamış oturumlar *Grupsuz*'da durur. *Grupsuz* yalnızca klasörde en az bir grup
@@ -116,7 +120,9 @@ Sağ tarafın üzerine gelince oturum kayıtlarının okunduğu klasör görün�
 
 **Pencere.** SessionBoard tek pencere çalışır: ikinci kez açmak yeni bir kopya başlatmaz, açık pencereyi
 öne getirir. Pencerenin boyutu ve konumu hatırlanır. *⋯ › Her zaman üstte* pencereyi diğerlerinin üstünde
-tutar. *⋯ › Tümünü daralt / Tümünü genişlet* bütün klasörleri birden kapatır ya da açar.
+tutar. Üst çubukta ★ ile yenile düğmesi arasındaki *Tümünü daralt* (içe bakan oklar) ve *Tümünü
+genişlet* (dışa bakan oklar) ağaçtaki bütün klasörleri birden kapatır ya da açar; son oturumlar şeridine
+dokunmaz.
 
 ## Gömülü terminal
 
@@ -204,7 +210,7 @@ hatayı yazar. v0.1.0'da güncelleyici yoktur; ondan bir kez elle geçmek gereki
 | Oturum listesi | `<kök>\<hesap>\<org>\local_*.json`, **yalnızca okunur**. Kökün yeri Claude'un sürümüne ve kurulum türüne göre değişiyor; SessionBoard onu kendisi arar (bkz. [Kayıtların yeri](#kayıtların-yeri)) |
 | Hesap | Birden çok hesap klasörü varsa en son etkinliğin olduğu hesap gösterilir: Claude'un hangi hesapla açık olduğu dosyalardan bilinemiyor |
 | Klasör | Kaydın `originCwd` alanı; worktree oturumları reponun köküne bağlanır |
-| Son etkinlik | Masaüstü kaydı ile konuşma dosyasının (`~\.claude\projects\…\<cliSessionId>.jsonl`) değiştirilme zamanının büyüğü. Oturum terminalde sürdürülünce masaüstünün kaydı güncellenmez, konuşma dosyası güncellenir |
+| Son etkinlik | Masaüstü kaydı ile konuşma dosyasındaki (`~\.claude\projects\…\<cliSessionId>.jsonl`) son mesajın zamanının büyüğü. Oturum terminalde sürdürülünce masaüstünün kaydı güncellenmez, konuşma dosyası güncellenir. Dosyanın değiştirilme zamanına bakılmaz: Claude kapanmış konuşmaların sonuna da sohbet dışı satırlar ekliyor |
 | Oturumu açma | `claude://claude.ai/epitaxy/<oturum-id>` → kayıtlı Claude protokol işleyicisi (Windows'ta Claude.exe, macOS'ta Claude.app) |
 
 ### Kayıtların yeri

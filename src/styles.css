@@ -166,16 +166,34 @@ header {
 .row.recent-more:hover { background: transparent; }
 
 .link-btn {
+  flex: none;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--muted);
   font: inherit;
   font-size: 12px;
+  font-weight: 400;
   cursor: pointer;
 }
 
-.link-btn:hover { color: var(--accent); }
+.link-btn:hover,
+.link-btn.on { color: var(--accent); }
+
+/* şerit başlığındaki "grupları daralt / aç": yalnız üzerine gelince değil, hep görünür */
+.recent-row .row-btn { display: grid; }
+
+/* "Grupla" açıkken klasör başlığı (daraltılabilir); oturumlar ağaçtaki grup içi girintiyle altında */
+.row.recent-ws {
+  height: 24px;
+  padding-left: 24px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.recent-ws .folder { flex: none; width: 13px; height: 13px; }
 
 /* oturumun klasörü (ağaçta klasör satırı gösterir, şeritte bu) */
 .session .origin {

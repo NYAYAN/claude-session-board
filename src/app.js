@@ -87,6 +87,8 @@
   const refreshBtn = document.getElementById('refresh');
   const menuBtn = document.getElementById('menu');
   const favToggleBtn = document.getElementById('fav-toggle');
+  const collapseAllBtn = document.getElementById('collapse-all');
+  const expandAllBtn = document.getElementById('expand-all');
   const terminals = window.SessionTerminals;
   if (IS_MAC) {
     searchEl.placeholder = 'Oturum ara (⌘F)';
@@ -97,6 +99,9 @@
     chevron: '<svg viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     folder: '<svg viewBox="0 0 16 16"><path d="M1.75 4.25c0-.69.56-1.25 1.25-1.25h3.1l1.5 1.5H13c.69 0 1.25.56 1.25 1.25v6c0 .69-.56 1.25-1.25 1.25H3c-.69 0-1.25-.56-1.25-1.25z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
     clock: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 4.75V8l2.25 1.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    // Üst çubuktaki "Tümünü daralt / genişlet" ile aynı: içe bakan oklar daraltır, dışa bakanlar açar.
+    collapseAll: '<svg viewBox="0 0 16 16"><path d="M4.5 2.75L8 6.25l3.5-3.5M4.5 13.25L8 9.75l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    expandAll: '<svg viewBox="0 0 16 16"><path d="M4.5 6.25L8 2.75l3.5 3.5M4.5 9.75L8 13.25l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     plus: '<svg viewBox="0 0 16 16"><path d="M8 3.25v9.5M3.25 8h9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
     close: '<svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
     star: '<svg viewBox="0 0 16 16"><path d="M8 1.9l1.8 3.75 4.1.55-3 2.85.75 4.05L8 11.15 4.35 13.1l.75-4.05-3-2.85 4.1-.55z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
@@ -123,6 +128,7 @@
         alwaysOnTop: false,
         recentCollapsed: false,
         recentCount: RECENT_STEP,
+        recentGrouped: false,
         tipDismissed: false,
         terminalWarned: false,
         sideWidth: 0,
@@ -391,15 +397,55 @@
       recentEl.replaceChildren(head);
       return;
     }
-
+    const grouped = !!state.prefs.recentGrouped;
+    // Gruplanmışsa klasörler en yeni oturumlarının sırasıyla gelir (liste son etkinliğe göre sıralı).
     const limit = recentLimit();
+    const buckets = new Map();
+    for (const item of all.slice(0, limit)) {
+      const key = grouped ? item.ws.key : '';
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(item);
+    }
+
+    // "Grupla" en sağda kalır: yanındaki simgeler açılıp kapanınca düğme yerinden kaymasın.
+    if (grouped) {
+      const closed = [...buckets.keys()].filter((key) => peekWs(key).recentCollapsed).length;
+      const collapse = rowButton(ICONS.collapseAll, 'Grupları daralt', 'recent-collapse');
+      collapse.disabled = closed === buckets.size;
+      const expand = rowButton(ICONS.expandAll, 'Grupları aç', 'recent-expand');
+      expand.disabled = closed === 0;
+      head.append(collapse, expand);
+    }
+    const groupBtn = span('link-btn' + (grouped ? ' on' : ''), grouped ? 'Grupla ✓' : 'Grupla', 'button');
+    groupBtn.dataset.action = 'recent-group';
+    groupBtn.title = grouped ? 'Gruplamayı kaldır' : 'Klasöre göre grupla';
+    groupBtn.setAttribute('aria-pressed', String(grouped));
+    head.append(groupBtn);
     const list = el('div', 'recent-list');
     list.setAttribute('role', 'group');
-    for (const { s, ws } of all.slice(0, limit)) {
-      const row = renderSession(s, ws.key, 1);
-      row.draggable = false;
-      row.querySelector('.name').after(span('origin', ws.name));
-      list.append(row);
+    for (const items of buckets.values()) {
+      if (grouped) {
+        // Şeritteki daraltma ağaçtaki klasör daraltmasından ayrı tutulur.
+        const ws = items[0].ws;
+        const wsOpen = !peekWs(ws.key).recentCollapsed;
+        const wsHead = el('div', 'row recent-ws');
+        wsHead.dataset.kind = 'recent-ws';
+        wsHead.dataset.ws = ws.key;
+        wsHead.setAttribute('role', 'treeitem');
+        wsHead.setAttribute('aria-expanded', String(wsOpen));
+        wsHead.title = ws.path;
+        const folder = svg('folder');
+        folder.classList.add('folder');
+        wsHead.append(chevron(wsOpen), folder, span('name', ws.name), span('count', String(items.length)));
+        list.append(wsHead);
+        if (!wsOpen) continue;
+      }
+      for (const { s, ws } of items) {
+        const row = renderSession(s, ws.key, grouped ? 2 : 1);
+        row.draggable = false;
+        if (!grouped) row.querySelector('.name').after(span('origin', ws.name));
+        list.append(row);
+      }
     }
     const parts = [head, list];
     if (all.length > RECENT_STEP) {
@@ -420,6 +466,12 @@
     }
     recentEl.replaceChildren(...parts);
     list.scrollTop = scroll;
+  }
+
+  /** Şeritte görünen klasör gruplarının hepsini daraltır ya da açar (ağaçtaki klasörler etkilenmez). */
+  function setRecentGroupsCollapsed(collapsed) {
+    for (const { ws } of recentSessions().slice(0, recentLimit())) wsState(ws.key).recentCollapsed = collapsed;
+    commit();
   }
 
   function setRecentCount(n) {
@@ -1398,9 +1450,6 @@
       { label: 'Arşivlenmiş oturumları göster', checked: !!state.prefs.showArchived, action: () => togglePref('showArchived') },
       { label: 'Gizli klasörleri göster', checked: !!state.prefs.showHidden, action: () => togglePref('showHidden') },
       { label: 'Her zaman üstte', checked: !!state.prefs.alwaysOnTop, action: () => { togglePref('alwaysOnTop'); applyAlwaysOnTop(); } },
-      { sep: true },
-      { label: 'Tümünü daralt', action: () => setAllCollapsed(true) },
-      { label: 'Tümünü genişlet', action: () => setAllCollapsed(false) },
       ...(state.prefs.tipDismissed ? [{ label: 'İpucunu yeniden göster', action: () => { state.prefs.tipDismissed = false; commit(); } }] : []),
       { sep: true },
       { header: state.prefs.sessionsDir ? 'Oturum kayıtları: elle seçildi' : 'Oturum kayıtları: otomatik' },
@@ -1510,6 +1559,9 @@
       else if (action === 'open-claude') openSession(row.dataset.id);
       else if (action === 'recent-more') setRecentCount(recentLimit() + RECENT_STEP);
       else if (action === 'recent-less') setRecentCount(RECENT_STEP);
+      else if (action === 'recent-group') togglePref('recentGrouped');
+      else if (action === 'recent-collapse') setRecentGroupsCollapsed(true);
+      else if (action === 'recent-expand') setRecentGroupsCollapsed(false);
       return;
     }
     switch (row.dataset.kind) {
@@ -1536,6 +1588,12 @@
       case 'recent':
         togglePref('recentCollapsed');
         break;
+      case 'recent-ws': {
+        const w = wsState(row.dataset.ws);
+        w.recentCollapsed = !w.recentCollapsed;
+        commit();
+        break;
+      }
       case 'session':
         onSessionClick(e, row.dataset.id);
         break;
@@ -1789,6 +1847,8 @@
 
   refreshBtn.addEventListener('click', () => refresh());
   favToggleBtn.addEventListener('click', () => togglePref('favoritesOnly'));
+  collapseAllBtn.addEventListener('click', () => setAllCollapsed(true));
+  expandAllBtn.addEventListener('click', () => setAllCollapsed(false));
 
   menuBtn.addEventListener('click', () => {
     const r = menuBtn.getBoundingClientRect();

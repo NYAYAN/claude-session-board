@@ -184,6 +184,16 @@ penceresi `tauri-plugin-dialog` ile Rust tarafında açılıyor (arayüze ek izi
 **Hesap seçimi.** Kayıtlar hesap klasörlerine ayrılıyor ama Claude'un hangi hesapla açık olduğu dosyalardan
 okunamıyor. En son etkinliğin olduğu hesap gösteriliyor.
 
+**Son etkinlik konuşmadaki son mesajdan.** Terminalde sürdürülen oturumda masaüstünün kaydı
+güncellenmiyor, bu yüzden konuşma dosyasına da bakılıyor. Önceden dosyanın değiştirilme zamanı
+kullanılıyordu, ama Claude kapanmış konuşmaların sonuna da sohbet dışı satırlar (`cost-state`,
+`last-prompt`, `custom-title` …) ekliyor: gerçek bir makinede 345 oturumun 327'sinde dosya zamanı son
+mesajdan en az bir saat yeniydi, aylar önceki oturumlar "10 dk" görünüyordu. Şimdi dosyanın sonundan
+geriye son `user`/`assistant` satırının `timestamp`'i okunuyor (`sessions::last_message_time`). Dosyalar
+yüzlerce MB olabiliyor ama son mesaj neredeyse hep son 64 KB'ta; bulunamazsa pencere 1 MB'a, sonra
+4 MB'a büyüyor. Sonuç dosyanın boyutu ve değiştirilme zamanıyla saklanıyor (`TAILS`); dosya değişmedikçe
+yeniden okunmuyor.
+
 **macOS: aynı arama, başka kök.** Kayıtlar `~/Library/Application Support/Claude/claude-code-sessions`
 altında ve düzen Windows'takiyle aynı; `roots_in` Application Support'u `%APPDATA%` gibi tarıyor. Yollar
 `/` ile kalıyor: Windows'taki `/` → `\` çevirisi macOS'ta bütün yolları bozardı, `\` ise orada geçerli
@@ -241,6 +251,8 @@ Rust birim testleri:
 | `sessions::worktree_reposuna_baglanir` | Worktree yolu (alt klasörü ve harf büyüklüğü ne olursa olsun) reponun köküne indiriliyor |
 | `sessions::duz_klasor_normallesir` | Sondaki ayırıcı atılıyor, `/` ters bölüye çevriliyor (macOS'ta `/` kalıyor, `\` dokunulmuyor); Türkçe karakterli yollar korunuyor |
 | `sessions::kimlik_dogrulama` | `claude://` bağlantısına yalnızca biçimi doğru bir oturum kimliği giriyor |
+| `sessions::son_mesaj_zamani_okunur` | Son etkinlik konuşmadaki son `user`/`assistant` satırından okunuyor; arkasından eklenen sohbet dışı satırlar, 64 KB'tan uzun satırlar ve yarım yazılmış son satır yanıltmıyor |
+| `sessions::zaman_damgasi_okunur` | Konuşma satırlarındaki UTC zaman damgası milisaniyeye doğru çevriliyor (artık yıl, kesirli saniye); başka biçimler reddediliyor |
 
 `worktree_reposuna_baglanir` ve `duz_klasor_normallesir` her sistemde o sistemin yol biçimiyle yazılı.
 

@@ -6,10 +6,12 @@
 //! Claude'un kendisi etkilenmez.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
+use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Kayıttan ihtiyaç duyulan alanlar. Geri kalanı (MCP ayarları vb.) serde tarafından atlanır.
 #[derive(Deserialize)]
@@ -218,7 +220,11 @@ pub fn list(custom: Option<&str>) -> Result<SessionList, String> {
         None => (Vec::new(), 0, roots[0].display().to_string()),
     };
     // Oturum terminalde sürdürülünce masaüstünün kaydı güncellenmez; konuşma dosyası güncellenir.
-    let times = transcript_times();
+    let ids: HashSet<&str> = sessions
+        .iter()
+        .filter_map(|s| s.cli_session_id.as_deref())
+        .collect();
+    let times = transcript_times(&ids);
     for s in &mut sessions {
         if let Some(t) = s.cli_session_id.as_ref().and_then(|c| times.get(c)) {
             s.last_activity_at = s.last_activity_at.max(*t);
@@ -232,13 +238,27 @@ pub fn list(custom: Option<&str>) -> Result<SessionList, String> {
     })
 }
 
-/// Konuşma dosyalarının son yazılma zamanı: `~\.claude\projects\<proje>\<cliSessionId>.jsonl`
-/// → ms. Profil kökü sanallaştırılmaz; Claude'un içinden ve dışından aynı klasör görünür.
-fn transcript_times() -> HashMap<String, f64> {
+/// Okunmuş bir konuşma dosyası: boyut, değiştirilme zamanı, son mesajın zamanı.
+type Tail = (u64, SystemTime, Option<f64>);
+
+/// Okunan konuşma dosyaları, yola göre. Dosya değişmedikçe yeniden okunmaz; yenileme her 20
+/// saniyede bir yüzlerce dosyaya bakıyor.
+static TAILS: Mutex<BTreeMap<PathBuf, Tail>> = Mutex::new(BTreeMap::new());
+
+/// Konuşmalardaki son mesajın zamanı: `~\.claude\projects\<proje>\<cliSessionId>.jsonl` → ms.
+/// Yalnız `ids`'teki konuşmalara bakılır. Profil kökü sanallaştırılmaz; Claude'un içinden ve
+/// dışından aynı klasör görünür.
+///
+/// Dosyanın değiştirilme zamanı kullanılamaz: Claude kapanmış konuşmaların sonuna da sohbet dışı
+/// satırlar (`cost-state`, `last-prompt`, `custom-title` …) ekliyor; aylar önceki oturumlar "10 dk"
+/// görünüyordu. Bu yüzden dosyanın sonundaki son `user`/`assistant` satırının zamanı okunur.
+fn transcript_times(ids: &HashSet<&str>) -> HashMap<String, f64> {
     let mut times = HashMap::new();
     let Some(home) = home_dir() else {
         return times;
     };
+    let mut cache = TAILS.lock().unwrap_or_else(|e| e.into_inner());
+    let mut seen = BTreeMap::new();
     for project in sub_dirs(&home.join(".claude").join("projects")) {
         let Ok(entries) = fs::read_dir(&project) else {
             continue;
@@ -251,17 +271,104 @@ fn transcript_times() -> HashMap<String, f64> {
             let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
                 continue;
             };
-            let modified = entry
-                .metadata()
-                .and_then(|m| m.modified())
-                .ok()
-                .and_then(|t| t.duration_since(UNIX_EPOCH).ok());
-            if let Some(d) = modified {
-                times.insert(stem.to_string(), d.as_millis() as f64);
+            if !ids.contains(stem) {
+                continue;
             }
+            let Ok(meta) = entry.metadata() else {
+                continue;
+            };
+            let (len, modified) = (meta.len(), meta.modified().unwrap_or(UNIX_EPOCH));
+            let at = match cache.get(&path) {
+                Some(&(l, m, at)) if l == len && m == modified => at,
+                _ => last_message_time(&path, len),
+            };
+            if let Some(t) = at {
+                let best = times.entry(stem.to_string()).or_insert(t);
+                *best = best.max(t);
+            }
+            seen.insert(path, (len, modified, at));
         }
     }
+    // Silinen ya da artık listede olmayan konuşmalar önbellekten düşer.
+    *cache = seen;
     times
+}
+
+/// Konuşmanın son `user`/`assistant` satırının zamanı (ms). Dosya yüzlerce MB olabilir; sondan
+/// geriye önce 64 KB okunur (son mesaj neredeyse hep oradadır), bulunamazsa 1 MB, sonra 4 MB.
+fn last_message_time(path: &Path, len: u64) -> Option<f64> {
+    let mut file = fs::File::open(path).ok()?;
+    for window in [64 << 10, 1 << 20, 4 << 20] {
+        let start = len.saturating_sub(window);
+        file.seek(SeekFrom::Start(start)).ok()?;
+        let mut buf = Vec::new();
+        (&mut file).take(len - start).read_to_end(&mut buf).ok()?;
+        // Pencere bir satırın ortasından başlıyorsa o yarım satır atlanır.
+        let text = if start == 0 {
+            &buf[..]
+        } else {
+            match buf.iter().position(|&b| b == b'\n') {
+                Some(nl) => &buf[nl + 1..],
+                None => continue,
+            }
+        };
+        if let Some(t) = text.rsplit(|&b| b == b'\n').find_map(message_time) {
+            return Some(t);
+        }
+        if start == 0 {
+            return None;
+        }
+    }
+    None
+}
+
+/// Satır bir konuşma mesajıysa (`user`/`assistant`) zamanı (ms).
+fn message_time(line: &[u8]) -> Option<f64> {
+    #[derive(Deserialize)]
+    struct Entry {
+        #[serde(rename = "type")]
+        kind: Option<String>,
+        timestamp: Option<String>,
+    }
+    let entry: Entry = serde_json::from_slice(line).ok()?;
+    match entry.kind.as_deref()? {
+        "user" | "assistant" => parse_timestamp(&entry.timestamp?),
+        _ => None,
+    }
+}
+
+/// `2026-11-08T08:25:38.123Z` (Claude Code'un yazdığı UTC biçimi) → ms; başka biçim `None`.
+fn parse_timestamp(s: &str) -> Option<f64> {
+    let b = s.as_bytes();
+    if b.len() < 20
+        || b[4] != b'-'
+        || b[7] != b'-'
+        || b[10] != b'T'
+        || b[13] != b':'
+        || b[16] != b':'
+        || b[b.len() - 1] != b'Z'
+    {
+        return None;
+    }
+    let num = |from: usize, to: usize| s.get(from..to)?.parse::<i64>().ok();
+    let (y, mo, d) = (num(0, 4)?, num(5, 7)?, num(8, 10)?);
+    let (h, mi, sec) = (num(11, 13)?, num(14, 16)?, num(17, 19)?);
+    if !(1..=12).contains(&mo) || !(1..=31).contains(&d) || h > 23 || mi > 59 || sec > 60 {
+        return None;
+    }
+    // Saniyenin kesri (".123"), varsa.
+    let frac = match s.get(19..s.len() - 1)? {
+        "" => 0.0,
+        f if f.starts_with('.') => f.parse::<f64>().ok()?,
+        _ => return None,
+    };
+    // Gregoryen tarih → 1970-01-01'den bu yana gün (H. Hinnant, days_from_civil).
+    let y = if mo <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * ((mo + 9) % 12) + 2) / 5 + d - 1;
+    let days = era * 146_097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719_468;
+    Some((days * 86_400 + h * 3_600 + mi * 60 + sec) as f64 * 1000.0 + (frac * 1000.0).round())
 }
 
 /// Bir hesap klasörünün (`<hesap>\<org>\local_*.json`) oturumları + okunamayan kayıt sayısı.
@@ -484,11 +591,56 @@ mod tests {
         workspaces.sort();
         workspaces.dedup();
         println!("oturum={} atlanan={} klasör={}", list.sessions.len(), list.skipped, workspaces.len());
-        for s in list.sessions.iter().take(3) {
-            println!("  {} | {} | {}", s.id, s.title, s.workspace);
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as f64;
+        for s in list.sessions.iter().filter(|s| !s.archived).take(8) {
+            let minutes = (now - s.last_activity_at) / 60_000.0;
+            println!("  {minutes:>8.0} dk | {} | {}", s.title, s.workspace);
         }
         assert!(!list.sessions.is_empty());
         assert!(list.sessions.iter().all(|s| is_valid_id(&s.id)));
+    }
+
+    #[test]
+    fn zaman_damgasi_okunur() {
+        assert_eq!(parse_timestamp("1970-01-01T00:00:00Z"), Some(0.0));
+        assert_eq!(parse_timestamp("2026-11-08T08:25:38.123Z"), Some(1_794_126_338_123.0));
+        assert_eq!(parse_timestamp("2000-02-29T23:59:59Z"), Some(951_868_799_000.0));
+        assert_eq!(parse_timestamp("2026-11-08T08:25:38.123+03:00"), None);
+        assert_eq!(parse_timestamp("2026-13-08T08:25:38Z"), None);
+        assert_eq!(parse_timestamp("dün"), None);
+    }
+
+    /// Son mesaj, arkasından gelen sohbet dışı satırlara (Claude kapanmış konuşmalara da ekliyor),
+    /// 64 KB'tan uzun satırlara ve yarım yazılmış son satıra rağmen bulunur.
+    #[test]
+    fn son_mesaj_zamani_okunur() {
+        let base = temp_base("tail");
+        fs::create_dir_all(&base).unwrap();
+        let blob = "x".repeat(200 << 10);
+        let lines = [
+            r#"{"type":"user","timestamp":"2026-11-01T10:00:00.000Z","message":{"role":"user"}}"#.to_string(),
+            r#"{"type":"assistant","timestamp":"2026-11-01T10:00:05.500Z","message":{"content":[{"type":"text"}]}}"#.to_string(),
+            r#"{"type":"system","timestamp":"2026-11-01T10:00:06.000Z"}"#.to_string(),
+            format!(r#"{{"type":"api-request-blob","data":"{blob}"}}"#),
+            r#"{"type":"last-prompt","lastPrompt":"selam"}"#.to_string(),
+            r#"{"type":"cost-state","timestamp":"2026-11-08T09:00:00.000Z"}"#.to_string(),
+            r#"{"type":"user","timestamp":"2026-11-08T09:"#.to_string(),
+        ];
+        let path = base.join("a.jsonl");
+        fs::write(&path, lines.join("\n")).unwrap();
+        let empty = base.join("b.jsonl");
+        fs::write(
+            &empty,
+            "{\"type\":\"custom-title\",\"customTitle\":\"x\"}\n",
+        )
+        .unwrap();
+
+        let got = last_message_time(&path, fs::metadata(&path).unwrap().len());
+        let none = last_message_time(&empty, fs::metadata(&empty).unwrap().len());
+        let _ = fs::remove_dir_all(&base);
+
+        assert_eq!(got, parse_timestamp("2026-11-01T10:00:05.500Z"));
+        assert_eq!(none, None);
     }
 
     #[test]
